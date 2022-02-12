@@ -3,8 +3,8 @@ from datasets import load_dataset
 
 
 MODULE_PATH = os.path.dirname(__file__)
-TRAIN_CSV_PATH = os.path.join(MODULE_PATH, 'cfpb-train.csv')
-TEST_CSV_PATH = os.path.join(MODULE_PATH, 'cfpb-test.csv')
+TRAIN_CSV_PATH = os.path.join(MODULE_PATH, 'csv', 'cfpb-train.csv')
+TEST_CSV_PATH = os.path.join(MODULE_PATH, 'csv', 'cfpb-test.csv')
 
 
 def load(split='train'):
