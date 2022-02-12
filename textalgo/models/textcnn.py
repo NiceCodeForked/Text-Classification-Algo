@@ -3,13 +3,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 from textalgo.nnet import Squeeze, Unsqueeze
-from textalgo.nnet import Sequential
 from textalgo.nnet import Linear
 from textalgo.nnet import BatchNorm1d as _BatchNorm1d
+from textalgo.nnet import SeparableConv2D
 
 
 class TextCNN(nn.Module):
     """
+    Yoon Kim, Convolutional neural networks for sentence classification (2014)
+
     References
     ----------
     1. https://arxiv.org/pdf/1408.5882.pdf
@@ -45,33 +47,78 @@ class TextCNN(nn.Module):
         )
     
     def conv_block(self, maxlen, num_filters, filter_size, emb_dim):
+        """
+        [batch, maxlen, emb_dim, 1]
+        [batch, n_filters, maxlen-filter_size+1, 1]
+        [batch, n_filters, maxlen-filter_size+1, 1]
+        [batch, n_filters, maxlen-filter_size+1]
+        [batch, n_filters, 1]
+        [batch, n_filters, 1]
+        """
         return nn.Sequential(OrderedDict([
-            ('unsqueeze', Unsqueeze(dim=1)),                             # [batch, maxlen, emb_dim, 1]
-            ('conv', nn.Conv2d(1, num_filters, (filter_size, emb_dim))), # [batch, n_filters, maxlen-filter_size+1, 1]
-            ('relu', nn.ReLU(inplace=True)),                             # [batch, n_filters, maxlen-filter_size+1, 1]
-            ('squeeze', Squeeze(dim=3)),                                 # [batch, n_filters, maxlen-filter_size+1]
-            ('pool', nn.MaxPool1d(maxlen-filter_size+1, stride=1)),      # [batch, n_filters, 1]
-            ('bn', nn.BatchNorm1d(num_filters))                          # [batch, n_filters, 1]
+            ('unsqueeze', Unsqueeze(dim=1)), 
+            ('conv', nn.Conv2d(1, num_filters, (filter_size, emb_dim))), 
+            ('relu', nn.ReLU(inplace=True)), 
+            ('squeeze', Squeeze(dim=3)), 
+            ('pool', nn.MaxPool1d(maxlen-filter_size+1, stride=1)), 
+            ('bn', nn.BatchNorm1d(num_filters))
         ]))
     
     def forward(self, x):
         """
         Input: [batch, maxlen]
         Output: [batch, len(kernel_list)*num_filters]
+
+        Shape
+        -----
+        [batch, maxlen, emb_dim]
+        [batch, len(kernel_list)*n_filters, 1]
+        [batch, len(kernel_list)*n_filters]
+        [batch, len(kernel_list)*n_filters]
+        [batch, 1, len(kernel_list)*n_filters]
+        [batch, 1, n_classes]
+        [batch, n_classes]
         """
-        x = self.encoder(x)                                      # [batch, maxlen, emb_dim]
-        x = torch.cat([layer(x) for layer in self.convs], dim=1) # [batch, len(kernel_list)*n_filters, 1]
-        x = x.squeeze(2)                                         # [batch, len(kernel_list)*n_filters]
-        x = self.drop(x)                                         # [batch, len(kernel_list)*n_filters]
-        x = x.unsqueeze(1)                                       # [batch, 1, len(kernel_list)*n_filters]
-        x = self.classifier(x)                                   # [batch, 1, n_classes]
+        x = self.encoder(x)
+        x = torch.cat([layer(x) for layer in self.convs], dim=1)
+        x = x.squeeze(2)
+        x = self.drop(x)
+        x = x.unsqueeze(1)
+        x = self.classifier(x)
         return x.squeeze(1)
 
 
-class Classifier(torch.nn.Module):
-    """This class implements the cosine similarity on the top of features.
-    Arguments
-    ---------
+class LightWeightedTextCNN(TextCNN):
+    """
+    Ritu Yadav, Light-Weighted CNN for Text Classification (2020)
+
+    References
+    ----------
+    1. https://arxiv.org/pdf/2004.07922.pdf
+    """
+    def conv_block(self, maxlen, num_filters, filter_size, emb_dim):
+        """
+        [batch, maxlen, emb_dim, 1]
+        [batch, n_filters, maxlen-filter_size+1, 1]
+        [batch, n_filters, maxlen-filter_size+1, 1]
+        [batch, n_filters, maxlen-filter_size+1]
+        [batch, n_filters, 1]
+        [batch, n_filters, 1]
+        """
+        return nn.Sequential(OrderedDict([
+            ('unsqueeze', Unsqueeze(dim=1)), 
+            ('conv', SeparableConv2D(1, num_filters, (filter_size, emb_dim))), 
+            ('relu', nn.ReLU(inplace=True)), 
+            ('squeeze', Squeeze(dim=3)), 
+            ('pool', nn.MaxPool1d(maxlen-filter_size+1, stride=1)), 
+            ('bn', nn.BatchNorm1d(num_filters)) 
+        ]))
+    
+
+class Classifier(nn.Module):
+    """
+    Parameters
+    ----------
     device : str
         Device used, e.g., "cpu" or "cuda".
     lin_blocks : int
@@ -80,18 +127,7 @@ class Classifier(torch.nn.Module):
         Number of neurons in linear layers.
     out_neurons : int
         Number of classes.
-    Example
-    -------
-    >>> classify = Classifier(input_size=2, lin_neurons=2, out_neurons=2)
-    >>> outputs = torch.tensor([ [1., -1.], [-9., 1.], [0.9, 0.1], [0.1, 0.9] ])
-    >>> outupts = outputs.unsqueeze(1)
-    >>> cos = classify(outputs)
-    >>> (cos < -1.0).long().sum()
-    tensor(0)
-    >>> (cos > 1.0).long().sum()
-    tensor(0)
     """
-
     def __init__(
         self,
         input_size,
@@ -100,7 +136,6 @@ class Classifier(torch.nn.Module):
         lin_neurons=192,
         out_neurons=1211,
     ):
-
         super().__init__()
         self.blocks = nn.ModuleList()
 
@@ -120,7 +155,7 @@ class Classifier(torch.nn.Module):
         nn.init.xavier_uniform_(self.weight)
 
     def forward(self, x):
-        """Returns the output probabilities over speakers.
+        """
         Arguments
         ---------
         x : torch.Tensor
