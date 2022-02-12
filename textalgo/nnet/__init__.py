@@ -10,3 +10,8 @@ from .embedding import GloveEmbedding
 from .containers import Sequential
 from .normalisation import BatchNorm1d
 from .linear import Linear
+from .cnn import (
+    SeparableConv2D, 
+    PointwiseConv2D, 
+    DepthwiseConv2D
+)
