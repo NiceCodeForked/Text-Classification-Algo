@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from datasets import set_progress_bar_enabled
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from transformers import BertTokenizerFast
@@ -14,11 +16,12 @@ from textalgo.data import cfpb_dataset
 from textalgo.utils import load_yaml
 from textalgo.engine import System
 from textalgo.engine import make_optimiser
-from textalgo.models import TextCNN
+from textalgo.models import TextCNN, LightWeightedTextCNN
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--exp_dir", default="exp/tmp", help="Full path to save best validation model")
+set_progress_bar_enabled(True)
 
 
 class TextCnnSystem(System):
@@ -31,11 +34,13 @@ class TextCnnSystem(System):
 
 
 def main(conf):
+    # Load CFPB dataset
     ds = cfpb_dataset.load(split='train')
     dataset_dict = ds.train_test_split(test_size=0.2, seed=914)
     train_ds = dataset_dict['train']
     valid_ds = dataset_dict['test']
     
+    # Load tokeniser
     tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
     train_ds = train_ds.map(
 		lambda x: tokenizer(
@@ -56,6 +61,9 @@ def main(conf):
 		)
 	)
     train_ds.set_format(type='torch', columns=['input_ids', 'label'])
+    valid_ds.set_format(type='torch', columns=['input_ids', 'label'])
+
+    # Get dataloader
     train_dl = DataLoader(
         train_ds, 
         batch_size=conf['training']['batch_size'], 
@@ -63,7 +71,6 @@ def main(conf):
         drop_last=True, 
         pin_memory=True
     )
-    valid_ds.set_format(type='torch', columns=['input_ids', 'label'])
     valid_dl = DataLoader(
         valid_ds, 
         batch_size=conf['training']['batch_size'], 
@@ -72,8 +79,8 @@ def main(conf):
         pin_memory=True
     )
     
-    # Define model and optimizer
-    model = TextCNN(
+    # Define model and optimiser
+    model = LightWeightedTextCNN(
         tokenizer.vocab_size, 
         conf['data']['max_length'], 
         emb_dim=conf['model']['embedding_dim'], 
@@ -85,10 +92,12 @@ def main(conf):
         num_classes=5
     )
     optimiser = make_optimiser(model.parameters(), **conf["optim"])
+
     # Define scheduler
     scheduler = None
     if conf["training"]["half_lr"]:
         scheduler = ReduceLROnPlateau(optimizer=optimiser, factor=0.5, patience=5)
+
     # Just after instantiating, save the args. Easy loading in the future.
     exp_dir = conf["main_args"]["exp_dir"]
     os.makedirs(exp_dir, exist_ok=True)
