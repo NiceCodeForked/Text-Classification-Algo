@@ -1,0 +1,22 @@
+# Model config
+model:
+  embedding_dim: 300
+  num_filters: 16
+  dropout: 0.5
+  lin_neurons: 128
+  lin_blocks: 2
+# Training config
+training:
+  epochs: 100
+  batch_size: 8
+  num_workers: 0
+  half_lr: yes
+  early_stop: yes
+# Optim config
+optim:
+  optimiser: adam
+  lr: 0.001
+  weight_decay: 0.
+# Data config
+data:
+  max_length: 32
