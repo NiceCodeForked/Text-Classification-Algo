@@ -14,7 +14,7 @@ class System(pl.LightningModule):
     def __init__(
         self,
         model,
-        optimizer,
+        optimiser,
         loss_func,
         train_loader,
         val_loader=None,
@@ -23,7 +23,7 @@ class System(pl.LightningModule):
     ):
         super().__init__()
         self.model = model
-        self.optimizer = optimizer
+        self.optimiser = optimiser
         self.loss_func = loss_func
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -59,7 +59,7 @@ class System(pl.LightningModule):
     def configure_optimizers(self):
         """Initialize optimizers, batch-wise and epoch-wise schedulers."""
         if self.scheduler is None:
-            return self.optimizer
+            return self.optimiser
 
         if not isinstance(self.scheduler, (list, tuple)):
             self.scheduler = [self.scheduler]  # support multiple schedulers
@@ -81,7 +81,7 @@ class System(pl.LightningModule):
                     "step",
                 ], "Scheduler interval should be either step or epoch"
                 epoch_schedulers.append(sched)
-        return [self.optimizer], epoch_schedulers
+        return [self.optimiser], epoch_schedulers
 
     def train_dataloader(self):
         """Training dataloader"""
