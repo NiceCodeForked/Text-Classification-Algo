@@ -12,6 +12,7 @@ training:
   num_workers: 0
   half_lr: yes
   early_stop: yes
+  resume: yes
 # Optim config
 optim:
   optimiser: adam
