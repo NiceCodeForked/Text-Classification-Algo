@@ -28,6 +28,7 @@ def accuracy_score(
 def f1_score(
     y_true, 
     y_pred, 
+    num_classes='auto', 
     average=None, 
     bootstrap=False, 
     num_rounds=200, 
@@ -39,7 +40,7 @@ def f1_score(
         average = 'weighted'
 
     if not bootstrap:
-        return f1_score_(y_true, y_pred, average)
+        return f1_score_(y_true, y_pred, num_classes, average)
 
     return bootstrap_score(
         y_true, 
@@ -55,6 +56,7 @@ def f1_score(
 def precision_score(
     y_true, 
     y_pred, 
+    num_classes='auto', 
     average=None, 
     bootstrap=False, 
     num_rounds=200, 
@@ -62,6 +64,10 @@ def precision_score(
     unbiased=True, 
     seed=914
 ):
+    """
+    num_classes: 
+        If 'auto', deduces the unique class labels from y_true
+    """
     assert y_true.ndim == 1
     assert y_pred.ndim == 1 or y_pred.ndim == 2
     
@@ -74,7 +80,8 @@ def precision_score(
     if average is None:
         average = 'weighted'
 
-    num_classes = len(y_true.unique())
+    if num_classes == 'auto':
+        num_classes = len(y_true.unique())
     func = Precision(average=average, num_classes=num_classes)
 
     if not bootstrap:
@@ -94,6 +101,7 @@ def precision_score(
 def recall_score(
     y_true, 
     y_pred, 
+    num_classes='auto', 
     average=None, 
     bootstrap=False, 
     num_rounds=200, 
@@ -113,6 +121,8 @@ def recall_score(
     if average is None:
         average = 'weighted'
 
+    if num_classes == 'auto':
+        num_classes = len(y_true.unique())
     num_classes = len(y_true.unique())
     func = Recall(average=average, num_classes=num_classes)
 
@@ -161,7 +171,7 @@ def accuracy_score_(y_true, y_pred):
     return torch.mean(((y_true == y_pred).int()).float())
 
 
-def f1_score_(y_true, y_pred, average=None):
+def f1_score_(y_true, y_pred, num_classes='auto', average=None):
     """
     References
     ----------
@@ -174,7 +184,7 @@ def f1_score_(y_true, y_pred, average=None):
         y_pred = y_pred.argmax(dim=1)
 
     if average not in [None, 'micro', 'macro', 'weighted']:
-            raise ValueError('Wrong value of average parameter')
+        raise ValueError('Wrong value of average parameter')
         
     def calc_f1_micro(y_true, y_pred):
         true_positive = torch.eq(y_true, y_pred).sum().float()
@@ -210,8 +220,11 @@ def f1_score_(y_true, y_pred, average=None):
     if average == 'micro':
         return calc_f1_micro(y_pred, y_true)
 
+    if num_classes == 'auto':
+        num_classes = len(y_true.unique())
+
     score = 0
-    for label_id in range(1, len(y_true.unique()) + 1):
+    for label_id in range(0, num_classes + 1):
         f1, true_count = calc_f1_count_for_label(y_pred, y_true, label_id)
 
         if average == 'weighted':
@@ -222,7 +235,7 @@ def f1_score_(y_true, y_pred, average=None):
     if average == 'weighted':
         score = torch.div(score, len(y_true))
     elif average == 'macro':
-        score = torch.div(score, len(y_true.unique()))
+        score = torch.div(score, num_classes)
 
     return score
 
