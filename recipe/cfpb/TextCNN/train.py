@@ -2,6 +2,8 @@ import sys
 sys.path.append('/Users/wangyang/Desktop/Text-Classification-Algo')
 import os
 import yaml
+import json
+import glob
 import argparse
 import torch
 import torch.nn as nn
@@ -132,22 +134,55 @@ def main(conf):
         config=conf,
     )
 
+    # Define callbacks
+    callbacks = []
+    checkpoint_dir = os.path.join(exp_dir, "checkpoints/")
+    checkpoint = ModelCheckpoint(
+        checkpoint_dir, monitor="val_loss", mode="min", save_top_k=5, verbose=True
+    )
+    callbacks.append(checkpoint)
+    if conf["training"]["early_stop"]:
+        callbacks.append(EarlyStopping(monitor="val_loss", mode="min", patience=30, verbose=True))
     # Don't ask GPU if they are not available.
     gpus = -1 if torch.cuda.is_available() else None
     distributed_backend = "ddp" if torch.cuda.is_available() else None
+
+    # Resume training
+    if conf['training']['resume']:
+        if glob.glob(checkpoint_dir+'*.ckpt'):
+            list_of_files = glob.glob(checkpoint_dir+'*.ckpt')
+            latest_file = max(list_of_files, key=os.path.getctime)
+            ckpt_path = latest_file
+        else:
+            ckpt_path = None
+    else: 
+        ckpt_path = None
+    print('Checkpoint folder: ', ckpt_path)
+
     trainer = pl.Trainer(
         max_epochs=conf["training"]["epochs"],
         # callbacks=callbacks,
         default_root_dir=exp_dir,
         gpus=gpus, 
         deterministic=True, 
-        distributed_backend=distributed_backend,
+        accelerator=distributed_backend,
         limit_train_batches=1.0, 
         gradient_clip_val=5.0, 
         precision=(16 if torch.cuda.is_available() else 32), 
         num_sanity_val_steps=0, 
     )
     trainer.fit(system)
+
+    best_k = {k: v.item() for k, v in checkpoint.best_k_models.items()}
+    with open(os.path.join(exp_dir, "best_k_models.json"), "w") as f:
+        json.dump(best_k, f, indent=0)
+
+    state_dict = torch.load(checkpoint.best_model_path)
+    system.load_state_dict(state_dict=state_dict["state_dict"])
+    system.cpu()
+
+    to_save = system.model.serialize()
+    torch.save(to_save, os.path.join(exp_dir, "best_model.pth"))
 
 
 if __name__ == '__main__':
