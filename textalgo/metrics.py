@@ -281,6 +281,12 @@ def accuracy_score_(y_true, y_pred):
     y_pred: 1d array-like or 2d array-like
         Estimated targets as returned by a classifier.
     """
+    assert y_true.ndim == 1
+    assert y_pred.ndim == 1 or y_pred.ndim == 2
+    
+    if y_pred.ndim == 2:
+        y_pred = y_pred.argmax(dim=1)
+        
     return torch.mean(((y_true == y_pred).int()).float())
 
 
