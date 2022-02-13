@@ -6,9 +6,10 @@ from textalgo.nnet import Squeeze, Unsqueeze
 from textalgo.nnet import Linear
 from textalgo.nnet import BatchNorm1d as _BatchNorm1d
 from textalgo.nnet import SeparableConv2D
+from .base import BaseModel
 
 
-class TextCNN(nn.Module):
+class TextCNN(BaseModel):
     """
     Yoon Kim, Convolutional neural networks for sentence classification (2014)
 
@@ -51,10 +52,15 @@ class TextCNN(nn.Module):
         num_classes=2
     ):
         super(TextCNN, self).__init__()
+        self.vocab_size = vocab_size
         self.maxlen = maxlen
         self.emb_dim = emb_dim
         self.num_filters = num_filters
         self.kernel_list = kernel_list
+        self.dropout = dropout
+        self.lin_neurons = lin_neurons
+        self.lin_blocks = lin_blocks
+        self.num_classes = num_classes
         
         self.encoder = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
         self.convs = nn.ModuleList(
@@ -110,6 +116,21 @@ class TextCNN(nn.Module):
         x = x.unsqueeze(1)
         x = self.classifier(x)
         return x.squeeze(1)
+
+    def get_model_args(self):
+        """ Arguments needed to re-instantiate the model."""
+        model_args = {
+            "vocab_size": self.vocab_size, 
+            "maxlen": self.maxlen,
+            "emb_dim": self.emb_dim,
+            "num_filters": self.num_filters,
+            "kernel_list": self.kernel_list, 
+            "dropout": self.dropout, 
+            "lin_neurons": self.lin_neurons, 
+            "lin_blocks": self.lin_blocks, 
+            "num_classes": self.num_classes
+        }
+        return model_args
 
 
 class LightWeightedTextCNN(TextCNN):
