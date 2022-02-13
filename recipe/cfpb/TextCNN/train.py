@@ -5,10 +5,18 @@ import yaml
 import json
 import glob
 import argparse
+import torchvision
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import seaborn as sn
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 import pytorch_lightning as pl
+from PIL import Image
+from io import BytesIO
+from sklearn.metrics import confusion_matrix
 from datasets import set_progress_bar_enabled
 from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
@@ -26,9 +34,12 @@ from textalgo.metrics import accuracy_score, f1_score
 parser = argparse.ArgumentParser()
 parser.add_argument("--exp_dir", default="exp/tmp", help="Full path to save best validation model")
 set_progress_bar_enabled(True)
+pl.seed_everything(seed=914)
 
 
 class TextCnnSystem(System):
+
+    default_monitor: str = "loss/val_loss"
 
     def common_step(self, batch, batch_nb, train):
         inputs, targets = batch['input_ids'], batch['label']
@@ -40,6 +51,8 @@ class TextCnnSystem(System):
             'acc': round(acc.item(), 4), 
             'f1': round(f1.item(), 4)
         }
+        if not train:
+            return est_targets, targets, loss, performance
         return loss, performance
 
     def training_step(self, batch, batch_nb):
@@ -49,9 +62,40 @@ class TextCnnSystem(System):
         return loss
 
     def validation_step(self, batch, batch_nb):
-        loss, performance = self.common_step(batch, batch_nb, train=False)
-        self.log("performance/val_performance", performance, on_epoch=True, prog_bar=False)
+        est_targets, targets, loss, performance = self.common_step(batch, batch_nb, train=False)
+        self.log("performance/val_performance", performance, prog_bar=False)
         self.log("loss/val_loss", loss, on_epoch=True, prog_bar=False)
+        return {
+            'loss': loss, 
+            'y_true': targets, 
+            'y_pred': est_targets.argmax(dim=1)
+        }
+
+    def validation_epoch_end(self, outputs):
+        y_pred = torch.cat([tmp['y_pred'] for tmp in outputs]).detach().cpu().numpy()
+        y_true = torch.cat([tmp['y_true'] for tmp in outputs]).detach().cpu().numpy()
+        
+        df_cm = pd.DataFrame(
+            confusion_matrix(y_true, y_pred),
+            index=np.arange(5),
+            columns=np.arange(5)
+        )
+
+        plt.figure()
+        sn.set(font_scale=1.2)
+        sn.heatmap(df_cm, annot=True, cmap="YlGnBu", annot_kws={"size": 16}, fmt='d')
+        buf = BytesIO()
+        plt.savefig(buf, format='jpeg')
+        buf.seek(0)
+        im = Image.open(buf)
+        im = torchvision.transforms.ToTensor()(im)
+        tb = self.trainer.logger.experiment
+        tb.add_image(
+            "val_confusion_matrix", 
+            im.permute(1, 2, 0), 
+            dataformats='HWC', 
+            global_step=self.trainer.global_step
+        )
 
 
 def main(conf):
@@ -160,14 +204,9 @@ def main(conf):
     callbacks = []
     checkpoint_dir = os.path.join(exp_dir, "checkpoints/")
     checkpoint = ModelCheckpoint(
-        checkpoint_dir, monitor="loss/val_loss", mode="min", save_top_k=5, verbose=False
+        dirpath=checkpoint_dir, monitor="loss/val_loss", mode="min", save_top_k=5, verbose=False
     )
     callbacks.append(checkpoint)
-    if conf["training"]["early_stop"]:
-        callbacks.append(EarlyStopping(monitor="loss/val_loss", mode="min", patience=30, verbose=True))
-    # Don't ask GPU if they are not available.
-    gpus = -1 if torch.cuda.is_available() else None
-    distributed_backend = "ddp" if torch.cuda.is_available() else None
 
     # Resume training
     if conf['training']['resume']:
@@ -175,15 +214,22 @@ def main(conf):
             list_of_files = glob.glob(checkpoint_dir+'*.ckpt')
             latest_file = max(list_of_files, key=os.path.getctime)
             ckpt_path = latest_file
-        else:
-            ckpt_path = None
-    else: 
-        ckpt_path = None
-    print('Checkpoint folder: ', ckpt_path)
+            print(f"loading checkpoint: {ckpt_path}...")
+            model.load_from_checkpoint(checkpoint_path=ckpt_path)
+    if conf["training"]["early_stop"]:
+        callbacks.append(EarlyStopping(monitor="loss/val_loss", mode="min", patience=30, verbose=False))
+
+    # Tensorboard Logger
+    logger = pl.loggers.TensorBoardLogger(save_dir=exp_dir, name="lightning_logs", default_hp_metric=False)
+
+    # Don't ask GPU if they are not available.
+    gpus = -1 if torch.cuda.is_available() else None
+    distributed_backend = "ddp" if torch.cuda.is_available() else None
 
     trainer = pl.Trainer(
         max_epochs=conf["training"]["epochs"],
-        callbacks=callbacks,
+        callbacks=callbacks, 
+        logger=logger, 
         default_root_dir=exp_dir,
         gpus=gpus, 
         deterministic=True, 
