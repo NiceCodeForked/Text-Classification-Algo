@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 from datasets import set_progress_bar_enabled
+from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
@@ -19,6 +20,7 @@ from textalgo.utils import load_yaml
 from textalgo.engine import System
 from textalgo.engine import make_optimiser
 from textalgo.models import TextCNN, LightWeightedTextCNN
+from textalgo.metrics import accuracy_score, f1_score
 
 
 parser = argparse.ArgumentParser()
@@ -32,7 +34,24 @@ class TextCnnSystem(System):
         inputs, targets = batch['input_ids'], batch['label']
         est_targets = self(inputs)
         loss = self.loss_func(est_targets, targets)
+        acc = accuracy_score(targets, est_targets)
+        f1 = f1_score(targets, est_targets)
+        performance = {
+            'acc': round(acc.item(), 4), 
+            'f1': round(f1.item(), 4)
+        }
+        return loss, performance
+
+    def training_step(self, batch, batch_nb):
+        loss, performance = self.common_step(batch, batch_nb, train=True)
+        self.log("performance/train_performance", performance, prog_bar=False, logger=True)
+        self.log("loss/train_loss", loss, logger=True)
         return loss
+
+    def validation_step(self, batch, batch_nb):
+        loss, performance = self.common_step(batch, batch_nb, train=False)
+        self.log("performance/val_performance", performance, on_epoch=True, prog_bar=False)
+        self.log("loss/val_loss", loss, on_epoch=True, prog_bar=False)
 
 
 def main(conf):
@@ -44,10 +63,11 @@ def main(conf):
     
     # Load tokeniser
     tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
     train_ds = train_ds.map(
 		lambda x: tokenizer(
 			x['text'], 
-            max_length=conf['data']['max_length'], 
+            max_length=conf['model']['max_length'], 
             truncation=True, 
             padding='max_length', 
             add_special_tokens=False
@@ -56,7 +76,7 @@ def main(conf):
     valid_ds = valid_ds.map(
 		lambda x: tokenizer(
 			x['text'], 
-            max_length=conf['data']['max_length'], 
+            max_length=conf['model']['max_length'], 
             truncation=True, 
             padding='max_length', 
             add_special_tokens=False
@@ -94,10 +114,10 @@ def main(conf):
         CNN = TextCNN
     model = CNN(
         tokenizer.vocab_size, 
-        conf['data']['max_length'], 
+        conf['model']['max_length'], 
         emb_dim=conf['model']['embedding_dim'], 
         num_filters=conf['model']['num_filters'], 
-        kernel_list=[3, 4, 5], 
+        kernel_list=conf['model']['kernel_list'], 
         dropout=conf['model']['dropout'], 
         lin_neurons=conf['model']['lin_neurons'], 
         lin_blocks=conf['model']['lin_blocks'], 
@@ -140,11 +160,11 @@ def main(conf):
     callbacks = []
     checkpoint_dir = os.path.join(exp_dir, "checkpoints/")
     checkpoint = ModelCheckpoint(
-        checkpoint_dir, monitor="val_loss", mode="min", save_top_k=5, verbose=False
+        checkpoint_dir, monitor="loss/val_loss", mode="min", save_top_k=5, verbose=False
     )
     callbacks.append(checkpoint)
     if conf["training"]["early_stop"]:
-        callbacks.append(EarlyStopping(monitor="val_loss", mode="min", patience=30, verbose=True))
+        callbacks.append(EarlyStopping(monitor="loss/val_loss", mode="min", patience=30, verbose=True))
     # Don't ask GPU if they are not available.
     gpus = -1 if torch.cuda.is_available() else None
     distributed_backend = "ddp" if torch.cuda.is_available() else None
@@ -167,7 +187,8 @@ def main(conf):
         default_root_dir=exp_dir,
         gpus=gpus, 
         deterministic=True, 
-        accelerator=distributed_backend,
+        accelerator=distributed_backend, 
+        plugins=DDPPlugin(find_unused_parameters=False), 
         limit_train_batches=1.0, 
         gradient_clip_val=5.0, 
         precision=(16 if torch.cuda.is_available() else 32), 
