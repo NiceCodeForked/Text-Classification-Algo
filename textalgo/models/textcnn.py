@@ -12,9 +12,31 @@ class TextCNN(nn.Module):
     """
     Yoon Kim, Convolutional neural networks for sentence classification (2014)
 
+    Parameters
+    ----------
+    vocab_size: int
+        Defines the number of different tokens that can be represented by the inputs_ids passed.
+    maxlen: int
+        Control the length of the padding/truncation.
+    emb_dim: int
+        The size of each embedding vector.
+    num_filters: int
+        Number of filters.
+    kernel_list: List[int]
+        Multiple filters (with varying window sizes) to obtain multiple features.
+    dropout: float
+        Probability of an element to be zeroed.
+    lin_neurons: int
+        Number of neurons in linear layers.
+    lin_blocks: int
+        Number of linear layers.
+    num_classes: int
+        Number of classes.
+
     References
     ----------
     1. https://arxiv.org/pdf/1408.5882.pdf
+    2. https://github.com/speechbrain/speechbrain
     """
     def __init__(
         self, 
@@ -48,6 +70,8 @@ class TextCNN(nn.Module):
     
     def conv_block(self, maxlen, num_filters, filter_size, emb_dim):
         """
+        Shape
+        -----
         [batch, maxlen, emb_dim, 1]
         [batch, n_filters, maxlen-filter_size+1, 1]
         [batch, n_filters, maxlen-filter_size+1, 1]
@@ -67,7 +91,7 @@ class TextCNN(nn.Module):
     def forward(self, x):
         """
         Input: [batch, maxlen]
-        Output: [batch, len(kernel_list)*num_filters]
+        Output: [batch, n_classes]
 
         Shape
         -----
@@ -91,6 +115,27 @@ class TextCNN(nn.Module):
 class LightWeightedTextCNN(TextCNN):
     """
     Ritu Yadav, Light-Weighted CNN for Text Classification (2020)
+
+    Parameters
+    ----------
+    vocab_size: int
+        Defines the number of different tokens that can be represented by the inputs_ids passed.
+    maxlen: int
+        Control the length of the padding/truncation.
+    emb_dim: int
+        The size of each embedding vector.
+    num_filters: int
+        Number of filters.
+    kernel_list: List[int]
+        Multiple filters (with varying window sizes) to obtain multiple features.
+    dropout: float
+        Probability of an element to be zeroed.
+    lin_neurons: int
+        Number of neurons in linear layers.
+    lin_blocks: int
+        Number of linear layers.
+    num_classes: int
+        Number of classes.
 
     References
     ----------
@@ -127,6 +172,10 @@ class Classifier(nn.Module):
         Number of neurons in linear layers.
     out_neurons : int
         Number of classes.
+
+    References
+    ----------
+    1. https://github.com/speechbrain/speechbrain
     """
     def __init__(
         self,
@@ -156,10 +205,8 @@ class Classifier(nn.Module):
 
     def forward(self, x):
         """
-        Arguments
-        ---------
-        x : torch.Tensor
-            Torch tensor.
+        Input: [batch, input_size]
+        Output: [batch, out_neurons]
         """
         for layer in self.blocks:
             x = layer(x)
