@@ -2,3 +2,4 @@ datasets
 pytorch-lightning  
 ruamel.yaml
 transformers
+tqdm
