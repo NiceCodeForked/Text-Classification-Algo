@@ -9,7 +9,7 @@ class System(pl.LightningModule):
     Base class for deep learning systems.
     """
 
-    default_monitor: str = "val_loss"
+    default_monitor: str = "loss/val_loss"
 
     def __init__(
         self,
