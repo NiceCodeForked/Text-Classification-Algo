@@ -2,9 +2,10 @@ import os
 from datasets import load_dataset
 
 
+URL_PATH = 'https://media.githubusercontent.com/media/penguinwang96825/Text-Classification-Algo/master/textalgo/data/csv/'
 MODULE_PATH = os.path.dirname(__file__)
-TRAIN_CSV_PATH = os.path.join(MODULE_PATH, 'csv', 'cfpb-train.csv')
-TEST_CSV_PATH = os.path.join(MODULE_PATH, 'csv', 'cfpb-test.csv')
+TRAIN_CSV_PATH = os.path.join(URL_PATH, 'cfpb-train.csv')
+TEST_CSV_PATH = os.path.join(URL_PATH, 'cfpb-test.csv')
 
 
 def load(split='train'):
