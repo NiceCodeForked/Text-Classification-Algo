@@ -11,6 +11,24 @@ def accuracy_score(
     unbiased=True, 
     seed=914
 ):
+    """
+    Parameters
+    ----------
+    y_true: 1d array-like
+        Ground truth (correct) target values.
+    y_pred: 1d array-like or 2d array-like
+        Estimated targets as returned by a classifier.
+    bootstrap: bool
+        Whether to compute ordinary nonparametric bootstrap for the score.
+    num_rounds: int
+        The number of bootstrap samples to draw.
+    ci: float
+        An integer in the range (0, 1) that represents the confidence level.
+    unbiased: bool
+        Whether to use Bessel’s correction. (ddof=1)
+    seed: int
+        Random seed for generating bootstrap samples.
+    """
     if not bootstrap:
         return accuracy_score_(y_true, y_pred)
 
@@ -36,6 +54,28 @@ def f1_score(
     unbiased=True, 
     seed=914
 ):
+    """
+    Parameters
+    ----------
+    y_true: 1d array-like
+        Ground truth (correct) target values.
+    y_pred: 1d array-like or 2d array-like
+        Estimated targets as returned by a classifier.
+    num_classes: int or 'auto'
+        If 'auto', deduces the unique class labels from y_true
+    average: str {‘micro’, ‘macro’, ’weighted’}
+        This parameter is required for multiclass targets.
+    bootstrap: bool
+        Whether to compute ordinary nonparametric bootstrap for the score.
+    num_rounds: int
+        The number of bootstrap samples to draw.
+    ci: float
+        An integer in the range (0, 1) that represents the confidence level.
+    unbiased: bool
+        Whether to use Bessel’s correction. (ddof=1)
+    seed: int
+        Random seed for generating bootstrap samples.
+    """
     if average is None:
         average = 'weighted'
 
@@ -65,8 +105,26 @@ def precision_score(
     seed=914
 ):
     """
-    num_classes: 
+    Parameters
+    ----------
+    y_true: 1d array-like
+        Ground truth (correct) target values.
+    y_pred: 1d array-like or 2d array-like
+        Estimated targets as returned by a classifier.
+    num_classes: int or 'auto'
         If 'auto', deduces the unique class labels from y_true
+    average: str {‘micro’, ‘macro’, ’weighted’}
+        This parameter is required for multiclass targets.
+    bootstrap: bool
+        Whether to compute ordinary nonparametric bootstrap for the score.
+    num_rounds: int
+        The number of bootstrap samples to draw.
+    ci: float
+        An integer in the range (0, 1) that represents the confidence level.
+    unbiased: bool
+        Whether to use Bessel’s correction. (ddof=1)
+    seed: int
+        Random seed for generating bootstrap samples.
     """
     assert y_true.ndim == 1
     assert y_pred.ndim == 1 or y_pred.ndim == 2
@@ -109,6 +167,28 @@ def recall_score(
     unbiased=True, 
     seed=914
 ):
+    """
+    Parameters
+    ----------
+    y_true: 1d array-like
+        Ground truth (correct) target values.
+    y_pred: 1d array-like or 2d array-like
+        Estimated targets as returned by a classifier.
+    num_classes: int or 'auto'
+        If 'auto', deduces the unique class labels from y_true
+    average: str {‘micro’, ‘macro’, ’weighted’}
+        This parameter is required for multiclass targets.
+    bootstrap: bool
+        Whether to compute ordinary nonparametric bootstrap for the score.
+    num_rounds: int
+        The number of bootstrap samples to draw.
+    ci: float
+        An integer in the range (0, 1) that represents the confidence level.
+    unbiased: bool
+        Whether to use Bessel’s correction. (ddof=1)
+    seed: int
+        Random seed for generating bootstrap samples.
+    """
     assert y_true.ndim == 1
     assert y_pred.ndim == 1 or y_pred.ndim == 2
     
@@ -149,6 +229,31 @@ def bootstrap_score(
     func=None, 
     seed=914
 ):
+    """
+    Parameters
+    ----------
+    y_true: 1d array-like
+        Ground truth (correct) target values.
+    y_pred: 1d array-like or 2d array-like
+        Estimated targets as returned by a classifier.
+    num_classes: int or 'auto'
+        If 'auto', deduces the unique class labels from y_true
+    num_rounds: int
+        The number of bootstrap samples to draw.
+    ci: float
+        An integer in the range (0, 1) that represents the confidence level.
+    unbiased: bool
+        Whether to use Bessel’s correction. (ddof=1)
+    func: lambda
+        The statistic computed from the bootstrap samples.
+    seed: int
+        Random seed for generating bootstrap samples.
+
+    References
+    ----------
+    1. https://github.com/rasbt/mlxtend
+    """
+    torch.manual_seed(seed)
     bound = (1 - ci) / 2.
     check_output = func(y_true, y_pred)
     bootstrap_replicates = torch.zeros(num_rounds)
@@ -160,7 +265,7 @@ def bootstrap_score(
         bootstrap_replicates[i] = score
 
     original = check_output
-    standard_error = torch.std(bootstrap_replicates, unbiased=True)
+    standard_error = torch.std(bootstrap_replicates, unbiased=unbiased)
     t = torch.sort(bootstrap_replicates, dim=0, descending=False)[0]
     upper_ci = torch.quantile(t, q=(ci + bound), dim=0)
     lower_ci = torch.quantile(t, q=bound, dim=0)
@@ -168,11 +273,30 @@ def bootstrap_score(
 
 
 def accuracy_score_(y_true, y_pred):
+    """
+    Parameters
+    ----------
+    y_true: 1d array-like
+        Ground truth (correct) target values.
+    y_pred: 1d array-like or 2d array-like
+        Estimated targets as returned by a classifier.
+    """
     return torch.mean(((y_true == y_pred).int()).float())
 
 
 def f1_score_(y_true, y_pred, num_classes='auto', average=None):
     """
+    Parameters
+    ----------
+    y_true: 1d array-like
+        Ground truth (correct) target values.
+    y_pred: 1d array-like or 2d array-like
+        Estimated targets as returned by a classifier.
+    num_classes: int or 'auto'
+        If 'auto', deduces the unique class labels from y_true
+    average: str {‘micro’, ‘macro’, ’weighted’}
+        This parameter is required for multiclass targets.
+
     References
     ----------
     1. https://stackoverflow.com/a/63358412
@@ -241,6 +365,11 @@ def f1_score_(y_true, y_pred, num_classes='auto', average=None):
 
 
 def test_f1_score():
+    """
+    References
+    ----------
+    1. https://stackoverflow.com/a/63358412
+    """
     import numpy as np
     from tqdm.auto import tqdm
     from sklearn.metrics import f1_score as f1_score_sklearn
@@ -267,6 +396,11 @@ def test_f1_score():
 
 
 def test_accuracy_score():
+    """
+    References
+    ----------
+    1. https://stackoverflow.com/a/63358412
+    """
     import numpy as np
     from tqdm.auto import tqdm
     from sklearn.metrics import accuracy_score as accuracy_score_sklearn
@@ -292,6 +426,11 @@ def test_accuracy_score():
 
 
 def test_precision_score():
+    """
+    References
+    ----------
+    1. https://stackoverflow.com/a/63358412
+    """
     import numpy as np
     from tqdm.auto import tqdm
     from sklearn.metrics import precision_score as precision_score_sklearn
@@ -318,6 +457,11 @@ def test_precision_score():
 
 
 def test_recall_score():
+    """
+    References
+    ----------
+    1. https://stackoverflow.com/a/63358412
+    """
     import numpy as np
     from tqdm.auto import tqdm
     from sklearn.metrics import recall_score as recall_score_sklearn
