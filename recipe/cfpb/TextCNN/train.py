@@ -78,6 +78,10 @@ def main(conf):
         drop_last=True, 
         pin_memory=True
     )
+    print(
+        f'Train dataset: {len(train_ds)}\n'
+        f'Valid dataset: {len(valid_ds)}'
+    )
     
     # Define model and optimiser
     if conf['model']['light']:
@@ -110,7 +114,14 @@ def main(conf):
         yaml.safe_dump(conf, outfile)
 
     # Define Loss function.
-    loss_func = nn.CrossEntropyLoss()
+    targets = train_ds['label']
+    if conf['training']['loss_weight_rescaling']:
+        occurrences = torch.unique(targets, sorted=True, return_counts=True)[1]
+        # weight = 1. - (occurrences / len(targets))
+        weight = max(occurrences) / occurrences
+    else:
+        weight = None
+    loss_func = nn.CrossEntropyLoss(weight=weight)
     system = TextCnnSystem(
         model=model,
         loss_func=loss_func,
