@@ -1,8 +1,6 @@
 import os
 import sys
-# sys.path.append('/Users/wangyang/Desktop/Text-Classification-Algo')
 sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '..', '..'))
-
 import yaml
 import json
 import glob
@@ -71,6 +69,7 @@ def main(conf):
     train_dl = DataLoader(
         train_ds, 
         batch_size=conf['training']['batch_size'], 
+        num_workers=conf['training']['num_workers'], 
         shuffle=True, 
         drop_last=True, 
         pin_memory=True
@@ -78,6 +77,7 @@ def main(conf):
     valid_dl = DataLoader(
         valid_ds, 
         batch_size=conf['training']['batch_size'], 
+        num_workers=conf['training']['num_workers'], 
         shuffle=False, 
         drop_last=True, 
         pin_memory=True
@@ -140,7 +140,7 @@ def main(conf):
     callbacks = []
     checkpoint_dir = os.path.join(exp_dir, "checkpoints/")
     checkpoint = ModelCheckpoint(
-        checkpoint_dir, monitor="val_loss", mode="min", save_top_k=5, verbose=True
+        checkpoint_dir, monitor="val_loss", mode="min", save_top_k=5, verbose=False
     )
     callbacks.append(checkpoint)
     if conf["training"]["early_stop"]:
@@ -163,7 +163,7 @@ def main(conf):
 
     trainer = pl.Trainer(
         max_epochs=conf["training"]["epochs"],
-        # callbacks=callbacks,
+        callbacks=callbacks,
         default_root_dir=exp_dir,
         gpus=gpus, 
         deterministic=True, 
@@ -190,7 +190,11 @@ def main(conf):
 if __name__ == '__main__':
     from textalgo.utils import parse_args_as_dict, prepare_parser_from_dict
 
-    def_conf = load_yaml("local/conf.yml")
+    MODULE_DIR = os.path.join(os.path.dirname(sys.path[0]), '..', '..')
+    RECIPE_DIR = os.path.join(MODULE_DIR, 'recipe/cfpb/TextCNN/')
+    YAML_DIR = os.path.join(RECIPE_DIR, 'local/conf.yml')
+
+    def_conf = load_yaml(YAML_DIR)
     parser = prepare_parser_from_dict(def_conf, parser=parser)
     arg_dic, plain_args = parse_args_as_dict(parser, return_plain_args=True)
     main(arg_dic)
