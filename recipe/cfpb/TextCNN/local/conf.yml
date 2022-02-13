@@ -14,6 +14,7 @@ training:
   half_lr: yes
   early_stop: yes
   resume: yes
+  loss_weight_rescaling: yes
 # Optim config
 optim:
   optimiser: adam
