@@ -5,6 +5,7 @@ model:
   dropout: 0.5
   lin_neurons: 128
   lin_blocks: 2
+  light: yes
 # Training config
 training:
   epochs: 100
