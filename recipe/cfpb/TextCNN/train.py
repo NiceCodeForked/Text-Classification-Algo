@@ -80,7 +80,11 @@ def main(conf):
     )
     
     # Define model and optimiser
-    model = LightWeightedTextCNN(
+    if conf['model']['light']:
+        CNN = LightWeightedTextCNN
+    else:
+        CNN = TextCNN
+    model = CNN(
         tokenizer.vocab_size, 
         conf['data']['max_length'], 
         emb_dim=conf['model']['embedding_dim'], 
