@@ -1,6 +1,8 @@
-import sys
-sys.path.append('/Users/wangyang/Desktop/Text-Classification-Algo')
 import os
+import sys
+# sys.path.append('/Users/wangyang/Desktop/Text-Classification-Algo')
+sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '..', '..'))
+
 import yaml
 import json
 import glob
