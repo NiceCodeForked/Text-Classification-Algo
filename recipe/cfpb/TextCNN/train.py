@@ -1,6 +1,7 @@
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '..', '..'))
+
 import yaml
 import json
 import glob
@@ -23,8 +24,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from transformers import BertTokenizerFast
+
 from textalgo.data import cfpb_dataset
-from textalgo.utils import load_yaml
 from textalgo.engine import System
 from textalgo.engine import make_optimiser
 from textalgo.models import TextCNN, LightWeightedTextCNN
@@ -214,7 +215,7 @@ def main(conf):
             list_of_files = glob.glob(checkpoint_dir+'*.ckpt')
             latest_file = max(list_of_files, key=os.path.getctime)
             ckpt_path = latest_file
-            print(f"loading checkpoint: {ckpt_path}...")
+            print(f"Loading checkpoint: {ckpt_path} ...")
             model.load_from_checkpoint(checkpoint_path=ckpt_path)
     if conf["training"]["early_stop"]:
         callbacks.append(EarlyStopping(monitor="loss/val_loss", mode="min", patience=30, verbose=False))
@@ -255,6 +256,7 @@ def main(conf):
 
 
 if __name__ == '__main__':
+    from textalgo.utils import load_yaml
     from textalgo.utils import parse_args_as_dict, prepare_parser_from_dict
 
     MODULE_DIR = os.path.join(os.path.dirname(sys.path[0]), '..', '..')
