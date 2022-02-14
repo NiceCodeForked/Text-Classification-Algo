@@ -9,8 +9,6 @@ from torch.utils.data import DataLoader
 from transformers import BertTokenizerFast
 
 from textalgo.data import cfpb_dataset
-from textalgo.engine import System
-from textalgo.engine import make_optimiser
 from textalgo.models import TextCNN, LightWeightedTextCNN
 from textalgo.metrics import accuracy_score, f1_score
 
