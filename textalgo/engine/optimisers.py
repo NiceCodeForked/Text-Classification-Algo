@@ -17,6 +17,10 @@ from torch_optimizer import (
     RangerQH,
     RangerVA,
 )
+from textalgo.optim import (
+    HyperboloidRiemannianSGD, 
+    PoincareRiemannianSGD
+)
 
 
 def make_optimiser(params, optimiser="adam", **kwargs):
