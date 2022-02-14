@@ -15,3 +15,7 @@ from .cnn import (
     PointwiseConv2D, 
     DepthwiseConv2D
 )
+from .attention import (
+    SelfAttention, 
+    MultiheadAttention
+)

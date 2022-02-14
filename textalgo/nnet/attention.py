@@ -6,20 +6,27 @@ import torch.nn.functional as F
 
 class SelfAttention(nn.Module):
 
-    def __init__(self, embed_dim, kdim, vdim):
+    def __init__(self, input_dim, embed_dim):
         super(SelfAttention, self).__init__()
-        self.q = nn.Linear(embed_dim, kdim)
-        self.k = nn.Linear(embed_dim, kdim)
-        self.v = nn.Linear(embed_dim, vdim)
-        self.norm_factor = 1 / math.sqrt(kdim)
+        self.qdim, self.kdim, self.vdim = embed_dim, embed_dim, embed_dim
+        self.q = nn.Linear(input_dim, self.qdim)
+        self.k = nn.Linear(input_dim, self.kdim)
+        self.v = nn.Linear(input_dim, self.vdim)
+        self.o_proj = nn.Linear(embed_dim, embed_dim)
+        self.norm_factor = 1 / math.sqrt(self.kdim)
 
-    def forward(self, x):
+    def forward(self, x, mask=None, return_attention=False):
         Q = self.q(x)
         K = self.k(x)
         V = self.v(x)
-        attn = torch.matmul(Q, K.transpose(1, 2)) * self.norm_factor
-        attn = attn.softmax(dim=-1)
-        return torch.matmul(attn, V)
+        
+        values, attention = scaled_dot_product(Q, K, V, mask=None)
+        o = self.o_proj(values)
+
+        if return_attention:
+            return o, attention
+        else:
+            return o
 
 
 class MultiheadAttention(nn.Module):
@@ -56,13 +63,15 @@ class MultiheadAttention(nn.Module):
 
         # Separate Q, K, V from linear output
         qkv = qkv.reshape(batch_size, seq_length, self.num_heads, 3*self.head_dim)
-        qkv = qkv.permute(0, 2, 1, 3) # [batch, seq_len, head, head_dim]
-        q, k, v = qkv.chunk(3, dim=-1)
+        qkv = qkv.permute(0, 2, 1, 3)  # [batch, head, seq_len, 3*head_dim]
+        q, k, v = qkv.chunk(3, dim=-1) # [batch, head, seq_len, head_dim]
 
         # Determine value outputs
+        # values: [batch, head, seq_len, head_dim]
+        # attention: [batch, head, seq_len, seq_len]
         values, attention = scaled_dot_product(q, k, v, mask=mask)
         values = values.permute(0, 2, 1, 3) # [batch, seq_len, head, head_dim]
-        values = values.reshape(batch_size, seq_length, embed_dim)
+        values = values.reshape(batch_size, seq_length, self.num_heads*self.head_dim)
         o = self.o_proj(values)
 
         if return_attention:
