@@ -83,6 +83,10 @@ def make_embeddings_matrix(
         The way to initialise the embedding matrix.
     norm: bool
         If True, the resulting vector will be L2-normalized (unit Euclidean length).
+
+    References
+    ----------
+    1. https://madewithml.com/courses/foundations/embeddings/
     """
     # Load from gensim pre-trained model
     print(f'Loading {pretrained_model_name}...')
