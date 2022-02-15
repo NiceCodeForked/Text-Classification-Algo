@@ -133,3 +133,5 @@ dmypy.json
 **/runs
 glibc-2.18/
 glibc-2.18.tar.gz
+**/glove*.txt
+**/glove*.zip
