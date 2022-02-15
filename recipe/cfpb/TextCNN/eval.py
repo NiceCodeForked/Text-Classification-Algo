@@ -8,7 +8,7 @@ from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
 from transformers import BertTokenizerFast
 
-from textalgo.data import cfpb_dataset
+from textalgo.dataset import cfpb_dataset
 from textalgo.models import TextCNN, LightWeightedTextCNN
 from textalgo.metrics import accuracy_score, f1_score
 
