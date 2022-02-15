@@ -2,6 +2,51 @@ import torch
 from torchmetrics import Precision, Recall
 
 
+def top_k_accuracy_score(y_true, y_score, topk=(1,)):
+    """
+    Computes the accuracy over the k top predictions for the specified values of k
+
+    Parameters
+    ----------
+    y_true: torch.tensor
+        True labels of shape (n_samples,).
+    y_score: torch.tensor
+        These can be either probability estimates or non-thresholded decision values.
+        The binary case expects scores with shape (n_samples,).
+        The multiclass case expects scores with shape (n_samples, n_classes).
+    topk: int
+        Number of most likely outcomes considered to find the correct label.
+
+    Examples
+    --------
+    >>> y_true = torch.tensor([0, 1, 2, 2])
+    >>> y_score = torch.tensor([[0.5, 0.2, 0.2],  # 0 is in top 2
+    ...                         [0.3, 0.4, 0.2],  # 1 is in top 2
+    ...                         [0.2, 0.4, 0.3],  # 2 is in top 2
+    ...                         [0.7, 0.2, 0.1]]) # 2 isn't in top 2
+    >>> top_k_accuracy_score(y_true, y_score, k=2)
+    0.75
+
+    References
+    ----------
+    1. https://github.com/HobbitLong/SupContrast/blob/master/util.py
+    2. https://scikit-learn.org/stable/index.html
+    """
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = y_true.size(0)
+        _, pred = y_score.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(y_true.view(1, -1).expand_as(pred))
+
+        res = []
+        for k in topk:
+            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+
+        return res
+
+
 def accuracy_score(
     y_true, 
     y_pred, 
