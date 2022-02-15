@@ -6,7 +6,7 @@ from ._embedding import (
     FastText, 
     BPEmb
 )
-from .embedding import GloveEmbedding
+from .embedding import GloveGensimEmbedding
 from .containers import Sequential
 from .normalisation import BatchNorm1d
 from .linear import Linear
