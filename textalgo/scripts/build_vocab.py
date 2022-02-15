@@ -3,6 +3,7 @@ from collections import Counter
 from textalgo.preprocess.tokenize import tokenize
 
 
+# This is still under development
 def build_vocab_from_txt_file(
     text_file, 
     vocab_size=100, 
