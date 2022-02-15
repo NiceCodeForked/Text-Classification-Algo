@@ -1,7 +1,10 @@
 import torch
 import torch.nn as nn
+import numpy as np
+from tqdm.auto import tqdm
 from abc import abstractmethod
 from ._embedding import GloVe
+from textalgo.vectors import Vectors
 
 
 class BaseEmbedding(nn.Module):
@@ -13,64 +16,98 @@ class BaseEmbedding(nn.Module):
         raise NotImplementedError
 
 
-class GloveEmbedding(BaseEmbedding):
-    """ 
-    Wrapper class for text generating RNN 
-    Aliases
-    -------
-    'glove.42B.300d': dim='300', name='42B'
-    'glove.6B.100d': dim='100', name='6B'
-    'glove.6B.200d': dim='200', name='6B'
-    'glove.6B.300d': dim='300', name='6B'
-    'glove.6B.50d': dim='50', name='6B'
-    'glove.840B.300d': dim='300', name='840B'
-    'glove.twitter.27B.100d': dim='100', name='twitter.27B'
-    'glove.twitter.27B.200d': dim='200', name='twitter.27B'
-    'glove.twitter.27B.25d': dim='25', name='twitter.27B'
-    'glove.twitter.27B.50d': dim='50', name='twitter.27B'
-    """
-    def __init__(self, vocab=None, name="840B", dim=300, trainable=False, init_type='zero'):
-        super(GloveEmbedding, self).__init__()
+class GloveGensimEmbedding(BaseEmbedding):
 
-        self.vocab_size = len(vocab)
-        self.vocab = vocab
-        self.name = name
-        self.dim = dim
-        if init_type == 'zero':
-            vectors = GloVe(name=self.name, dim=self.dim, unk_init=torch.Tensor.zero_)
-        elif init_type == 'uniform':
-            vectors = GloVe(name=self.name, dim=self.dim, unk_init=torch.Tensor.uniform_)
+    def __init__(
+        self, 
+        pretrained_model_name, 
+        word2idx, 
+        init_type='random', 
+        norm=True, 
+        padding_idx=None, 
+        trainable=True
+    ):
+        super(GloveGensimEmbedding, self).__init__()
+        self.pretrained_model_name = pretrained_model_name
+        self.word2idx = word2idx
+        self.init_type = init_type
+        self.norm = norm
+        self.padding_idx = padding_idx
 
-        self.weights = torch.zeros(self.vocab_size, vectors.dim)
-
-        for i, idx in enumerate(list(self.vocab.idx2word.keys())):
-            self.weights[i, :] = vectors[self.vocab[idx]]
-
-        self.embedding = nn.Embedding(self.vocab_size, self.dim, padding_idx=self.vocab.pad_token_id)
+        self.vocab_size = len(word2idx)
+        self.weights = make_embeddings_matrix(
+            pretrained_model_name, word2idx, init_type, norm
+        )
+        self.dim = self.weights.shape[1]
+        self.embedding = nn.Embedding(self.vocab_size, self.dim, padding_idx=padding_idx)
         self.embedding.weight.data = torch.Tensor(self.weights)
-
         if not trainable:
             self.embedding.weight.requires_grad = False
 
-    def forward(self, batch):
-        embeds = self.embedding(batch)
+    def forward(self, x):
+        embeds = self.embedding(x)
         return embeds
 
 
-class SimpleEmbedding(BaseEmbedding):
-    """ Wrapper class for text generating RNN """
-    def __init__(self, vocab=None, dim=300, trainable=False):
-        super(SimpleEmbedding, self).__init__()
+def make_embeddings_matrix(
+    pretrained_model_name, 
+    word2idx, 
+    init_type='random', 
+    norm=True
+):
+    """
+    Create embeddings matrix to use in Embedding layer.
 
-        self.vocab_size = len(vocab)
-        self.vocab = vocab
-        self.dim = dim
+    Parameters
+    ----------
+    pretrained_model_name: str
+        A pretrained model hosted inside a model repo on huggingface hub.
+        Check it on https://huggingface.co/models?sort=downloads&search=fse%2F
+        Aliases
+            - glove-twitter-25
+            - glove-twitter-50
+            - glove-twitter-100
+            - glove-twitter-200
+            - glove-wiki-gigaword-50
+            - glove-wiki-gigaword-100
+            - glove-wiki-gigaword-200
+            - glove-wiki-gigaword-300
+            - paragram-25
+            - paragram-300-sl999
+            - paragram-300-ws353
+            - paranmt-300
+            - word2vec-google-news-300
+    word2idx: Dict
+        A dictionary that maps word to index.
+    init_type: str
+        The way to initialise the embedding matrix.
+    norm: bool
+        If True, the resulting vector will be L2-normalized (unit Euclidean length).
+    """
+    # Load from gensim pre-trained model
+    print(f'Loading {pretrained_model_name}...')
+    wv = Vectors.from_pretrained(pretrained_model_name)
+    embedding_dim = wv.vector_size
+    gensim_word2idx = wv.key_to_index
+    gensim_word2vec = {
+        k: wv.get_vector(k, norm=norm) for k, v in tqdm(gensim_word2idx.items())
+    }
+    del wv
 
-        self.embedding = nn.Embedding(self.vocab_size, self.dim)
+    # Generate embedding matrix for nn.Embedding layer
+    print(f'Building embedding matrix...')
+    if init_type == 'random':
+        embedding_matrix = np.random.randn(len(word2idx), embedding_dim)
+        embedding_matrix = np.divide(
+            embedding_matrix, 
+            np.linalg.norm(embedding_matrix, axis=1, ord=2)[:, np.newaxis]
+        )
+    else:
+        embedding_matrix = np.zeros((len(word2idx), embedding_dim))
+    
+    for word, i in word2idx.items():
+        embedding_vector = gensim_word2vec.get(word, None)
+        if embedding_vector is not None:
+            embedding_matrix[i] = embedding_vector
 
-        if not trainable:
-            self.embedding.weight.requires_grad = False
-
-    def forward(self, batch):
-        embeds = self.embedding(batch)
-        return embeds
+    return embedding_matrix
