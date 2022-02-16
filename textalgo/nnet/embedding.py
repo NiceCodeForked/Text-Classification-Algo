@@ -7,6 +7,36 @@ from ._embedding import GloVe
 from textalgo.vectors import Vectors
 
 
+class EmbeddingAggregator(nn.Module):
+    """
+    Such convolution will have time_steps parameters. 
+    Each parameter will be a equal to embed_dim.
+    In other words this convolution will ran over dimension 
+    with size embed_dim and sum it with learnable weights.
+
+    Parameters
+    ----------
+    in_channels: int
+        This is the size of the time steps.
+
+    References
+    ----------
+    1. https://stackoverflow.com/a/58574603
+    """
+    def __init__(self, in_channels):
+        self.aggregator = nn.Conv1d(
+            in_channels=in_channels, 
+            out_channels=1, 
+            kernel_size=1
+        )
+
+    def forward(self, x):
+        """
+        x: [batch_size, time_steps, embed_dim]
+        """
+        return self.aggregator(x)
+
+
 class BaseEmbedding(nn.Module):
     """
     Base class for all models
