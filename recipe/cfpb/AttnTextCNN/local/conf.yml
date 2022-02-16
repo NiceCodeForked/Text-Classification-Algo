@@ -3,11 +3,10 @@ model:
   max_length: 64
   embedding_dim: 300
   num_filters: 16
-  kernel_list: [3, 5, 7, 9]
+  kernel_list: [3, 4, 5]
   dropout: 0.5
   lin_neurons: 128
   lin_blocks: 2
-  light: no
 # Training config
 training:
   epochs: 100
