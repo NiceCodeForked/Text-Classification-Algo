@@ -1,7 +1,7 @@
 #!/bin/bash
 
-parentdir='/share/mini1/res/t/asr/studio/read-us/timit/demixing/Text-Classification-Algo'
-recipedir='recipe/cfpb/TextCNN'
+parentdir='/share/mini1/res/t/asr/studio/read-us/timit/demixing/nlp-algo'
+recipedir='recipe/cfpb/AttnTextCNN'
 submitjob='/share/mini1/sw/mini/jet/latest/tools/submitjob'
 
 number_of_gpus=1
