@@ -24,9 +24,12 @@ def mobius_add(x: torch.Tensor, y: torch.Tensor):
 
 
 @torch.jit.script
-def expm(p: torch.Tensor, u: torch.Tensor, use_exp=False):
-    if not use_exp:
-        return p + u
+def expm_add(p: torch.Tensor, u: torch.Tensor):
+    return p + u
+
+
+@torch.jit.script
+def expm_exp(p: torch.Tensor, u: torch.Tensor):
     # For exact exponential mapping
     norm = torch.sqrt(torch.sum(u ** 2, dim=-1, keepdim=True))
     return mobius_add(p, torch.tanh(0.5 * lambda_x(p) * norm) * u / norm.clamp_min(1e-15))
@@ -53,4 +56,7 @@ class PoincareRiemannianSGD(Optimizer):
                 d_p = grad(p)
                 d_p.mul_(-lr)
 
-                p.data.copy_(expm(p.data, d_p, self.use_exp))
+                if self.use_exp:
+                    p.data.copy_(expm_exp(p.data, d_p))
+                else:
+                    p.data.copy_(expm_add(p.data, d_p))
