@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from PIL import Image
 from io import BytesIO
+from collections import OrderedDict
 from sklearn.metrics import confusion_matrix
 from datasets import set_progress_bar_enabled
 from pytorch_lightning.plugins import DDPPlugin
@@ -25,10 +26,13 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from transformers import BertTokenizerFast
 
+from textalgo.nnet import Squeeze, Unsqueeze
 from textalgo.dataset import cfpb_dataset
+from textalgo.models import BaseModel, Classifier
+from textalgo.nnet import SpatialDropout
+from textalgo.nnet import SelfAttention, MultiheadAttention
 from textalgo.engine import System
 from textalgo.engine import make_optimiser
-from textalgo.models import TextCNN, LightWeightedTextCNN
 from textalgo.metrics import accuracy_score, f1_score
 
 
@@ -99,6 +103,106 @@ class TextCnnSystem(System):
         )
 
 
+class AttnTextCNN(BaseModel):
+    
+    def __init__(
+        self, 
+        vocab_size, 
+        maxlen, 
+        emb_dim, 
+        num_filters=16, 
+        kernel_list=[3, 4, 5], 
+        dropout=0.1, 
+        lin_neurons=128, 
+        lin_blocks=2, 
+        num_classes=2
+    ):
+        super(AttnTextCNN, self).__init__()
+        self.vocab_size = vocab_size
+        self.maxlen = maxlen
+        self.emb_dim = emb_dim
+        self.num_filters = num_filters
+        self.kernel_list = kernel_list
+        self.dropout = dropout
+        self.lin_neurons = lin_neurons
+        self.lin_blocks = lin_blocks
+        self.num_classes = num_classes
+        
+        self.encoder = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
+        self.spatial = SpatialDropout(dropout)
+        self.attention = SelfAttention(emb_dim, emb_dim)
+        self.convs = nn.ModuleList(
+            [self.conv_block(maxlen, num_filters, w, emb_dim) for w in kernel_list]
+        )
+        self.drop = nn.Dropout(dropout)
+        self.classifier = Classifier(
+            input_size=len(kernel_list)*num_filters, 
+            lin_neurons=lin_neurons, 
+            lin_blocks=lin_blocks, 
+            out_neurons=num_classes
+        )
+    
+    def conv_block(self, maxlen, num_filters, filter_size, emb_dim):
+        """
+        Shape
+        -----
+        [batch, maxlen, emb_dim, 1]
+        [batch, n_filters, maxlen-filter_size+1, 1]
+        [batch, n_filters, maxlen-filter_size+1, 1]
+        [batch, n_filters, maxlen-filter_size+1]
+        [batch, n_filters, 1]
+        [batch, n_filters, 1]
+        """
+        return nn.Sequential(OrderedDict([
+            ('unsqueeze', Unsqueeze(dim=1)), 
+            ('conv', nn.Conv2d(1, num_filters, (filter_size, emb_dim))), 
+            ('relu', nn.ReLU(inplace=True)), 
+            ('squeeze', Squeeze(dim=3)), 
+            ('pool', nn.MaxPool1d(maxlen-filter_size+1, stride=1)), 
+            ('bn', nn.BatchNorm1d(num_filters))
+        ]))
+    
+    def forward(self, x):
+        """
+        Input: [batch, maxlen]
+        Output: [batch, n_classes]
+
+        Shape
+        -----
+        [batch, maxlen, emb_dim]
+        [batch, len(kernel_list)*n_filters, 1]
+        [batch, len(kernel_list)*n_filters]
+        [batch, len(kernel_list)*n_filters]
+        [batch, 1, len(kernel_list)*n_filters]
+        [batch, 1, n_classes]
+        [batch, n_classes]
+        """
+        x = self.encoder(x)
+        x = self.spatial(x)
+        x = self.attention(x)
+        x = torch.cat([layer(x) for layer in self.convs], dim=1)
+        x = x.squeeze(2)
+        x = self.drop(x)
+        x = x.unsqueeze(1)
+        x = self.classifier(x)
+        return x.squeeze(1)
+
+    def get_model_args(self):
+        """ Arguments needed to re-instantiate the model."""
+        model_args = {
+            "vocab_size": self.vocab_size, 
+            "maxlen": self.maxlen,
+            "emb_dim": self.emb_dim,
+            "num_filters": self.num_filters,
+            "kernel_list": self.kernel_list, 
+            "dropout": self.dropout, 
+            "lin_neurons": self.lin_neurons, 
+            "lin_blocks": self.lin_blocks, 
+            "num_classes": self.num_classes
+        }
+        return model_args
+
+
 def main(conf):
     # Load CFPB dataset
     ds = cfpb_dataset.load(split='train')
@@ -153,11 +257,7 @@ def main(conf):
     )
     
     # Define model and optimiser
-    if conf['model']['light']:
-        CNN = LightWeightedTextCNN
-    else:
-        CNN = TextCNN
-    model = CNN(
+    model = AttnTextCNN(
         tokenizer.vocab_size, 
         conf['model']['max_length'], 
         emb_dim=conf['model']['embedding_dim'], 
@@ -260,7 +360,7 @@ if __name__ == '__main__':
     from textalgo.utils import parse_args_as_dict, prepare_parser_from_dict
 
     MODULE_DIR = os.path.join(os.path.dirname(sys.path[0]), '..', '..')
-    RECIPE_DIR = os.path.join(MODULE_DIR, 'recipe/cfpb/TextCNN/')
+    RECIPE_DIR = os.path.join(MODULE_DIR, 'recipe/cfpb/AttnTextCNN/')
     YAML_DIR = os.path.join(RECIPE_DIR, 'local/conf.yml')
 
     def_conf = load_yaml(YAML_DIR)
