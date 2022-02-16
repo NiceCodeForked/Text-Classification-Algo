@@ -1,10 +1,13 @@
 import re
 import pysbd
+import string
 import itertools
 import warnings
+import unicodedata
 
 
 unicode = str
+ALL_LETTERS = string.ascii_letters + " .,;'-"
 PATTERN = r""" (?x)             # set flag to allow verbose regexps
         (?:[A-Z]\.)+            # abbreviations, e.g. U.S.A.
         | \$?\d+(?:\.\d+)?%?    # currency and percentages, $12.40, 50%
@@ -42,3 +45,11 @@ def any2unicode(text, encoding='utf8', errors='strict'):
     if isinstance(text, unicode):
         return text
     return unicode(text, encoding, errors=errors)
+
+
+def unicode2ascii(text):
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', s)
+        if unicodedata.category(c) != 'Mn'
+        and c in ALL_LETTERS
+    )
