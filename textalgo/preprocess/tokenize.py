@@ -11,15 +11,16 @@ from typeguard import check_argument_types
 
 unicode = str
 ALL_LETTERS = string.ascii_letters + " .,;'-"
-PATTERN = r""" (?x)             # set flag to allow verbose regexps
-        (?:[A-Z]\.)+            # abbreviations, e.g. U.S.A.
-        | \$?\d+(?:\.\d+)?%?    # currency and percentages, $12.40, 50%
-        | \w+(?:-\w+)+          # words with internal hyphens
-        | \w+(?:'[a-z])         # words with apostrophes
-        | \.\.\.                # ellipsis
-        |(?:Mr|Mrs|Dr|Ms)\.     # honorifics
-        | \w+                   # normal words
-        """
+PATTERN = r"""
+    (?x)                    # set flag to allow verbose regexps
+    (?:[A-Z]\.)+            # abbreviations, e.g. U.S.A.
+    | \$?\d+(?:\.\d+)?%?    # currency and percentages, $12.40, 50%
+    | \w+(?:-\w+)+          # words with internal hyphens
+    | \w+(?:'[a-z])         # words with apostrophes
+    | \.\.\.                # ellipsis
+    |(?:Mr|Mrs|Dr|Ms)\.     # honorifics
+    | \w+                   # normal words
+"""
 warnings.filterwarnings('ignore')
 
 
