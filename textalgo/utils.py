@@ -132,3 +132,10 @@ def run_shell(cmd):
     logger.debug(msg)
 
     return output, err, p.returncode
+
+
+class TestClass():
+
+    def __init__(self, x, y, z):
+        super().__init__()
+        self.args = {k:v for k, v in locals().items() if k not in ['self', '__class__']}
