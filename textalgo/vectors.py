@@ -20,11 +20,16 @@ class Vectors(Word2VecKeyedVectors):
             Check it on https://huggingface.co/models?sort=downloads&search=fse%2F
         mmap: str 
             If to load the vectors in mmap mode.
+            Then it will read the vectors from disk instead of loading them into RAM
 
         Returns
         -------
         Vectors
             An object of pretrained vectors.
+
+        References
+        ----------
+        1. https://github.com/oborchers/Fast_Sentence_Embeddings
         """
         try:
             path = Path(snapshot_download(repo_id=f"fse/{model}"))
@@ -52,11 +57,16 @@ class FTVectors(FastTextKeyedVectors):
             Check it on https://huggingface.co/models?sort=downloads&search=fse%2F
         mmap: str 
             If to load the vectors in mmap mode.
+            Then it will read the vectors from disk instead of loading them into RAM
 
         Returns
         -------
         Vectors
             An object of pretrained vectors.
+
+        References
+        ----------
+        1. https://github.com/oborchers/Fast_Sentence_Embeddings
         """
         try:
             path = Path(snapshot_download(repo_id=f"fse/{model}"))
