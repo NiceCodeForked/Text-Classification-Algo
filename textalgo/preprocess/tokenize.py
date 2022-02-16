@@ -23,12 +23,40 @@ PATTERN = r""" (?x)             # set flag to allow verbose regexps
 warnings.filterwarnings('ignore')
 
 
-def build_tokenizer(token_type):
-    pass
+def build_tokenizer(
+    token_type, 
+    special_tokens: Union[str, Iterable[str]] = None, 
+    remove_special_tokens: bool = False, 
+    non_linguistic_symbols: Union[Path, str, Iterable[str]] = None,
+    remove_non_linguistic_symbols: bool = False,
+    space_symbol: str = "<space>", 
+    uncased: bool = False, 
+    delimiter: str = None
+):
+    if token_type == "char":
+        return CharTokenizer(
+            uncased=uncased, 
+            non_linguistic_symbols=non_linguistic_symbols,
+            space_symbol=space_symbol,
+            remove_non_linguistic_symbols=remove_non_linguistic_symbols,
+        )
+    elif token_type == "word":
+        return WordTokenizer(
+            uncased=uncased, 
+            delimiter=delimiter, 
+            special_tokens=special_tokens, 
+            remove_special_tokens=remove_special_tokens
+        )
+    else:
+        raise ValueError(
+            f"token_type must be either char or word: " f"{token_type}"
+        )
 
 
 class CharTokenizer(object):
     """
+    Tokenise a text into a sequence of characters.
+
     Parameters
     ----------
     uncased: bool
@@ -72,7 +100,7 @@ class CharTokenizer(object):
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("
-            f'normalise={self.normalise}, '
+            f'uncased={self.normalise}, '
             f'space_symbol="{self.space_symbol}", '
             f'non_linguistic_symbols="{self.non_linguistic_symbols}", '
             f'remove_non_linguistic_symbols={self.remove_non_linguistic_symbols}'
@@ -110,23 +138,101 @@ class CharTokenizer(object):
         return "".join(tokens)
 
 
-def tokenize(text, flatten=True, encoding='utf8', errors='strict'):
+class WordTokenizer(object):
     """
     Tokenise a text into a sequence of words.
 
     Parameters
     ----------
-    text: str
-        Input text may be either unicode or utf8-encoded byte string.
+    uncased: bool
+        Whether the text being lowercased.
+    delimiter: str
+        A delimiter is a sequence of one or more characters for 
+        specifying the boundary between separate.
+    special_tokens: List[str]
+        A list of special tokens. Every special token should be 
+        started with a left square bracket and ended with right 
+        square bracket. e.g. "[PAD]"
+    remove_special_tokens: bool
+        Whether to remove special tokens in the sentence.
     """
-    text = any2unicode(text, encoding=encoding, errors=errors)
-    # Sentence boundary disambiguation
-    seg = pysbd.Segmenter(language="en", clean=False)
-    tokens = [re.findall(PATTERN, sentence) for sentence in seg.segment(text)]
-    # Tokenise into word-level tokens
-    if flatten:
-        return list(itertools.chain(*tokens))
-    return tokens
+    def __init__(
+        self, 
+        uncased: bool = False, 
+        delimiter: str = None,
+        special_tokens: Union[str, Iterable[str]] = None,
+        remove_special_tokens: bool = False,
+    ):
+        assert check_argument_types()
+        self.normalise = uncased
+        self.delimiter = delimiter
+
+        if special_tokens is None:
+            self.special_tokens = set()
+        else:
+            self.special_tokens = set(special_tokens)
+        self.remove_special_tokens = remove_special_tokens
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}("
+            f'uncased="{self.uncased}", '
+            f'delimiter="{self.delimiter}", '
+            f'remove_special_tokens={self.remove_special_tokens}'
+            f")"
+        )
+
+    def __call__(self, input_, *args, **kwds):
+        if isinstance(input_, str):
+            return self.text2tokens(input_, *args, **kwds)
+        elif all(map(lambda x: isinstance(x, str), input_)):
+            return self.tokens2text(input_, *args, **kwds)
+        else:
+            raise TypeError('Input should be either List[str] or str!')
+
+    def text2tokens(self, line: str) -> List[str]:
+        tokens = []
+        for t in self.split(line, self.special_tokens):
+            if self.remove_special_tokens and t in self.special_tokens:
+                continue
+            # Lowercase the token if normalise is True (except for special tokens)
+            t = t.lower() if (self.normalise) and (t not in self.special_tokens) else t
+            tokens.append(t)
+        return tokens
+
+    def tokens2text(self, tokens: Iterable[str]) -> str:
+        if self.delimiter is None:
+            delimiter = " "
+        else:
+            delimiter = self.delimiter
+        return delimiter.join(tokens)
+
+    @staticmethod
+    def split(
+        text, 
+        special_tokens=None, 
+        pattern=PATTERN, 
+        flatten=True, 
+        encoding='utf8', 
+        errors='strict'
+    ):
+        text = any2unicode(text, encoding=encoding, errors=errors)
+        # Sentence boundary disambiguation
+        seg = pysbd.Segmenter(language="en", clean=False)
+        # Add special tokens into regex pattern
+        if special_tokens:
+            exclude = set(string.punctuation)
+            special_tokens = [
+                r'\['+''.join(ch for ch in s if ch not in exclude)+r'\]' 
+                for s in special_tokens
+            ]
+            results = '| '.join(special_tokens)
+            pattern = f"{pattern}|(?:{results})"
+        # Start tokenising the sentence into word-level tokens
+        tokens = [re.findall(pattern, sentence) for sentence in seg.segment(text)]
+        if flatten:
+            return list(itertools.chain(*tokens))
+        return tokens
 
 
 def any2unicode(text, encoding='utf8', errors='strict'):
