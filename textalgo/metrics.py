@@ -41,8 +41,8 @@ def top_k_accuracy_score(y_true, y_score, topk=(1,)):
 
         res = []
         for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
+            correct_k = correct[:k].flatten().float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size).item())
 
         return res
 
