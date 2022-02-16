@@ -9,7 +9,6 @@ from typing import List, Union, Iterable
 from typeguard import check_argument_types
 
 
-unicode = str
 ALL_LETTERS = string.ascii_letters + " .,;'-"
 PATTERN = r""" (?x)             # set flag to allow verbose regexps
         (?:[A-Z]\.)+            # abbreviations, e.g. U.S.A.
@@ -20,7 +19,6 @@ PATTERN = r""" (?x)             # set flag to allow verbose regexps
         |(?:Mr|Mrs|Dr|Ms)\.     # honorifics
         | \w+                   # normal words
         """
-warnings.filterwarnings('ignore')
 
 
 def build_tokenizer(
@@ -216,6 +214,7 @@ class WordTokenizer(object):
         encoding='utf8', 
         errors='strict'
     ):
+        warnings.filterwarnings('ignore')
         text = any2unicode(text, encoding=encoding, errors=errors)
         # Sentence boundary disambiguation
         seg = pysbd.Segmenter(language="en", clean=False)
@@ -243,6 +242,7 @@ def any2unicode(text, encoding='utf8', errors='strict'):
     ----------
     1. https://tedboy.github.io/nlps/_modules/gensim/utils.html#any2unicode
     """
+    unicode = str
     if isinstance(text, unicode):
         return text
     return unicode(text, encoding, errors=errors)
