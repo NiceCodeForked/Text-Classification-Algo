@@ -2,15 +2,24 @@ import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '..', '..'))
 
+import json
 import torch
 import argparse
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
 from transformers import BertTokenizerFast
+from sklearn import metrics
 
+from textalgo.utils import run_shell
 from textalgo.dataset import cfpb_dataset
 from textalgo.models import TextCNN, LightWeightedTextCNN
-from textalgo.metrics import accuracy_score, f1_score
+from textalgo.metrics import (
+    accuracy_score, 
+    f1_score, 
+    top_k_accuracy_score, 
+    precision_score, 
+    recall_score
+)
 
 
 parser = argparse.ArgumentParser()
@@ -69,12 +78,31 @@ def main(conf):
             y_pred.append(est_targets)
         y_true = torch.cat(y_true)
         y_pred = torch.cat(y_pred)
-        acc = accuracy_score(y_true, y_pred)
-        f1 = f1_score(y_true, y_pred, num_classes=5)
-        print(
-            f'acc: {acc:.4f}\n'
-            f'f1: {f1:.4f}'
-        )
+        acc = accuracy_score(y_true, y_pred).item()
+        top3_acc = top_k_accuracy_score(y_true, y_pred, topk=(3,))
+        f1 = f1_score(y_true, y_pred, num_classes=5).item()
+        precision = precision_score(y_true, y_pred).item()
+        recall = recall_score(y_true, y_pred).item()
+        result = {
+            'acc': acc, 
+            'acc@3': top3_acc, 
+            'f1': f1, 
+            'precision': precision, 
+            'recall': recall
+        }
+        os.system('clear')
+        print('Performance: \n')
+        print(json.dumps(result, indent=4))
+        print('='*60)
+        print('Classification report: \n')
+        print(metrics.classification_report(
+            y_true.numpy(), y_pred.argmax(dim=1).numpy()
+        ))
+        print('='*60)
+        print('Confusion matrix: \n')
+        print(metrics.confusion_matrix(
+            y_true.numpy(), y_pred.argmax(dim=1).numpy()
+        ))
 
 
 if __name__ == '__main__':
