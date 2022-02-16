@@ -1,9 +1,9 @@
+import math
 import torch
 import torch.nn as nn
 import numpy as np
 from tqdm.auto import tqdm
 from abc import abstractmethod
-from ._embedding import GloVe
 from textalgo.vectors import Vectors
 
 
@@ -145,3 +145,87 @@ def make_embeddings_matrix(
             embedding_matrix[i] = embedding_vector
 
     return embedding_matrix
+
+
+class PositionalEmbedding(nn.Module):
+    """
+    Learned Positional Embedding
+
+    Examples
+    --------
+    >>> vocab_size, embed_dim = 10, 300
+    >>> batch_size, max_length = 4, 16
+    >>> tok_embed = nn.Embedding(vocab_size, embed_dim)
+    >>> pos_embed = PositionEmbedding(max_length, embed_dim)
+    >>> norm = nn.LayerNorm(embed_dim)
+    >>> x = torch.randint(10, (batch_size, max_length))
+    >>> y = norm(tok_embed(x) + pos_embed(x))
+    >>> print(y.shape)
+    torch.Size([4, 16, 300])
+
+    References
+    ----------
+    1. https://neptune.ai/blog/how-to-code-bert-using-pytorch-tutorial
+    2. https://aclanthology.org/2021.emnlp-main.236.pdf
+    """
+    def __init__(self, max_length, embed_dim):
+        super(PositionalEmbedding, self).__init__()
+        self.pos_embed = nn.Embedding(max_length, embed_dim)
+
+    def forward(self, x):
+        """
+        Inputs: [batch_size, max_length]
+        Outputs: [batch_size, max_length, embed_dim]
+        """
+        seq_length = x.size(1)
+        pos = torch.arange(seq_length, dtype=torch.long)
+        pos = pos.unsqueeze(0).expand_as(x)
+        return self.pos_embed(pos)
+
+
+class PositionalEncoding(nn.Module):
+    """
+    Positional Encoding which uses sine and cosine functions.
+
+    Parameters
+    ----------
+    embed_dim: int
+        The embedding dimension (required).
+    dropout: float
+        The dropout value (default=0.1).
+    max_len: int
+        The maximum length of the incoming sequence (default=5000).
+    
+    Examples
+    --------
+    >>> batch_size, max_length, embed_dim = 4, 16, 300
+    >>> pos_encoder = PositionalEncoding(embed_dim)
+    >>> x = torch.randint(10, (batch_size, max_length, embed_dim))
+    >>> y = pos_embed(x)
+    >>> print(y.shape)
+    torch.Size([4, 16, 300])
+
+    References
+    ----------
+    1. https://github.com/pytorch/pytorch/issues/51551
+    """
+    def __init__(self, embed_dim, p=0.1, max_length=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=p)
+        pe = torch.zeros(max_length, embed_dim)
+        position = torch.arange(0, max_length, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, embed_dim, 2).float() * (-math.log(10000.0) / embed_dim))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        """
+        Inputs: [batch_size, seq_length, embed_dim]
+        Outputs: [batch_size, seq_length, embed_dim]
+        """
+        x = x.permute(1, 0, 2)
+        x = x + self.pe[:x.size(0), :]
+        x = self.dropout(x)
+        return x.permute(1, 0, 2)
