@@ -19,3 +19,8 @@ from .attention import (
     SelfAttention, 
     MultiheadAttention
 )
+from .dropout import (
+    SpatialDropout, 
+    GaussianDropout, 
+    AutoDropout
+)
