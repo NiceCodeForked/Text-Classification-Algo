@@ -1,11 +1,114 @@
 import math
 import torch
+import typing
 import operator
 import itertools
+import collections
 from collections import Counter
 from torch.utils.data import Dataset
+from torchtext.vocab import Vocab
+from torchtext.vocab import build_vocab_from_iterator
+from textalgo.preprocess.tokenize import word_tokenize
 
 
+class TextDatasetMixin(object):
+
+    _texts: typing.Sequence
+    _tokenizer: typing.Callable
+    _transforms: typing.Iterable[typing.Callable]
+    _vocab: Vocab
+    specials=["<pad>", "<unk>"]
+
+    def _build_vocab(self) -> Vocab:
+
+        def yield_tokens(documents: typing.List[str]):
+            for doc in documents:
+                yield self._tokenizer(doc)
+
+        return build_vocab_from_iterator(
+            yield_tokens(self._texts), specials=self.specials
+        )
+
+    def _tokenize(self, text: str) -> typing.List[str]:
+        return self._tokenizer(text)
+
+    def _transform(self, text: str) -> str:
+        for transform in self._transforms:
+            text = transform(text)
+        return text
+
+    def _vectorize(self, tokens: typing.List[str]) -> torch.Tensor:
+        return torch.tensor([self._vocab[token] for token in tokens])
+
+
+class BaseTextDataset(Dataset, TextDatasetMixin):
+    """
+    A base text Dataset() class that can handle a list of text and labels.
+    This should also be working with collate_fn for the purpose of padding.
+    Please check with those two different padding strategies: 
+        - textalgo.collate.DynamicPadding()
+        - textalgo.collate.StaticPadding()
+
+    Parameters
+    ----------
+    data: List[str]
+        List of text inputs.
+    labels: List[int] or List[float]
+        List of labels.
+    transforms: Iterable[Callable]
+        A list of transformation functions
+    tokenizer: Callable
+        Ａ function that receives text and returns list of tokens.
+    vocab: Vocab
+        A torchtext.vocab.Vocab() object.
+
+    References
+    ----------
+    1. https://github.com/deniederhut/niacin/
+    2. https://discuss.pytorch.org/t/supplying-arguments-to-collate-fn/25754/3
+    """
+    def __init__(
+        self,
+        texts: typing.Sequence,
+        labels: typing.Sequence,
+        transforms: typing.Iterable[typing.Callable] = None,
+        tokenizer: typing.Callable = None,
+        vocab: Vocab = None,
+    ):
+        self._texts = texts
+        self._labels = labels
+        # Set up transforms functions
+        if transforms is None:
+            self._transforms = []
+        else:
+            self._transforms = transforms
+        # Set up tokeniser
+        if tokenizer is None:
+            self._tokenizer = word_tokenize
+        else:
+            self._tokenizer = tokenizer
+        # Set up vocabulary dictionary
+        if vocab is None:
+            self._vocab = self._build_vocab()
+        else:
+            self._vocab = vocab
+
+    def __len__(self) -> int:
+        return len(self._labels)
+
+    def __getitem__(self, index: int):
+        label = self._labels[index]
+        texts = self._texts[index]
+        texts = self._transform(texts)
+        tokens = self._tokenize(texts)
+        vector = self._vectorize(tokens)
+        return {
+            'input_ids': vector, 
+            'label': label
+        }
+
+
+# This is still under development
 class TextTfidfDataset(Dataset):
     """
     Parameters
@@ -139,3 +242,5 @@ class TextTfidfDataset(Dataset):
     @staticmethod
     def trimmer(seq, size, filler=0):
         return seq[:size] + [filler]*(size-len(seq))
+
+
