@@ -22,6 +22,19 @@ PATTERN = r"""
 """
 
 
+def word_tokenize(text):
+    warnings.filterwarnings('ignore')
+    text = any2unicode(text)
+    # Sentence boundary disambiguation
+    seg = pysbd.Segmenter(language="en", clean=False)
+    tokens = [re.findall(PATTERN, sentence) for sentence in seg.segment(text)]
+    return list(itertools.chain(*tokens))
+
+
+def char_tokenize():
+    pass
+
+
 def build_tokenizer(
     token_type, 
     special_tokens: Union[str, Iterable[str]] = None, 
