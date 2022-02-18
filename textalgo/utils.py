@@ -1,6 +1,8 @@
+import time
 import argparse
 import logging
 import subprocess
+from functools import wraps
 from .hyperpyyaml import load_hyperpyyaml
 
 
@@ -89,6 +91,18 @@ def isint(value):
         return True
     except ValueError:
         return False
+
+
+def timing(f):
+    @wraps(f)
+    def wrap(*args, **kw):
+        ts = time.time()
+        result = f(*args, **kw)
+        te = time.time()
+        print ('func:%r args:[%r, %r] took: %2.4f sec' % \
+          (f.__name__, args, kw, te-ts))
+        return result
+    return wrap
 
 
 def run_shell(cmd):
