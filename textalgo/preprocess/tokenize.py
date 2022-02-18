@@ -4,6 +4,7 @@ import string
 import itertools
 import warnings
 import unicodedata
+import concurrent.futures as cf
 from pathlib import Path
 from typing import List, Union, Iterable
 from typeguard import check_argument_types
@@ -23,12 +24,22 @@ PATTERN = r"""
 
 
 def word_tokenize(text):
-    warnings.filterwarnings('ignore')
-    text = any2unicode(text)
-    # Sentence boundary disambiguation
-    seg = pysbd.Segmenter(language="en", clean=False)
-    tokens = [re.findall(PATTERN, sentence) for sentence in seg.segment(text)]
-    return list(itertools.chain(*tokens))
+
+    def tokenise_(t):
+        warnings.filterwarnings('ignore')
+        t = any2unicode(t)
+        # Sentence boundary disambiguation
+        seg = pysbd.Segmenter(language="en", clean=False)
+        tokens = [re.findall(PATTERN, sentence) for sentence in seg.segment(t)]
+        return list(itertools.chain(*tokens))
+
+    if isinstance(text, str):
+        return tokenise_(text)
+    elif isinstance(text, list):
+        # with cf.ProcessPoolExecutor(max_workers=mp.cpu_count()) as executor:
+        #     result = executor.map(tokenise_, text)
+        # return result
+        return [tokenise_(t) for t in text]
 
 
 def char_tokenize():
