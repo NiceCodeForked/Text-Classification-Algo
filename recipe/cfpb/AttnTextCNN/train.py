@@ -28,6 +28,7 @@ from src.system import TextCnnSystem
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--exp_dir", default="exp/tmp", help="Full path to save best validation model")
+parser.add_argument("--version", default="none", help="Version to continue training")
 set_progress_bar_enabled(True)
 pl.seed_everything(seed=914)
 
@@ -35,23 +36,24 @@ pl.seed_everything(seed=914)
 def main(conf):
     # Load CFPB dataset
     print('Loading dataset from the internet...')
-    url = "https://raw.githubusercontent.com/penguinwang96825/Text-Classification-Algo/master/data/cfpb-train.csv"
-    df = pd.read_csv(url)
+    url = "https://raw.githubusercontent.com/penguinwang96825/Text-Classification-Algo/master/data/"
+    train_url = url + 'cfpb-train.csv'
+    df = pd.read_csv(train_url)
     X_train, X_valid, y_train, y_valid = train_test_split(
         df['text'], df['label'], test_size=0.2, stratify=df['label'], random_state=914
     )
     train_ds, valid_ds, vocab = load_text_classification_datasets(
-        X_train, X_valid, y_train, y_valid, batched=True, num_proc=16
+        X_train, X_valid, y_train, y_valid, batched=True, num_proc=conf['data']['num_processing']
     )
 
-    # Save vocab
+    # Save vocab (this will be used in evaluation when executing eval.py)
     sorted_by_freq_tuples = sorted(vocab.get_stoi().items(), key=lambda x: x[1], reverse=False)
     ordered_dict = OrderedDict(sorted_by_freq_tuples)
 
     with open('./vocab.txt', mode='wt', encoding='utf-8') as f:
         f.write('\n'.join(ordered_dict.keys()))
 
-    # Get dataloader
+    # Get train/validation dataloader
     print('Loading dataloader...')
     train_dl = DataLoader(
         train_ds, 
@@ -112,6 +114,8 @@ def main(conf):
     else:
         weight = None
     loss_func = nn.CrossEntropyLoss(weight=weight)
+
+    # Build pytorch-lightings-style system
     system = TextCnnSystem(
         model=model,
         loss_func=loss_func,
@@ -122,13 +126,32 @@ def main(conf):
         config=conf,
     )
 
-    # Define callbacks
+    # Define model checkpoints callback
     callbacks = []
     checkpoint_dir = os.path.join(exp_dir, "checkpoints/")
     checkpoint = ModelCheckpoint(
-        dirpath=checkpoint_dir, monitor="loss/val_loss", mode="min", save_top_k=5, verbose=False
+        dirpath=checkpoint_dir, 
+        # filename='version_4', 
+        monitor="loss/val_loss", mode="min", save_top_k=5, verbose=False
     )
     callbacks.append(checkpoint)
+
+    # Early stop callback
+    if conf["training"]["early_stop"]:
+        callbacks.append(EarlyStopping(monitor="loss/val_loss", mode="min", patience=30, verbose=False))
+
+    # Tensorboard Logger
+    if conf['version'] == 'none':
+        version = None
+    else:
+        version = int(conf["version"])
+    logger = pl.loggers.TensorBoardLogger(
+        save_dir=exp_dir, name="lightning_logs", default_hp_metric=False, version=version
+    )
+
+    # Don't ask GPU if they are not available.
+    gpus = -1 if torch.cuda.is_available() else None
+    distributed_backend = "ddp" if torch.cuda.is_available() else None
 
     # Resume training
     if conf['training']['resume']:
@@ -136,19 +159,12 @@ def main(conf):
             list_of_files = glob.glob(checkpoint_dir+'*.ckpt')
             latest_file = max(list_of_files, key=os.path.getctime)
             ckpt_path = latest_file
-            print(f"Loading checkpoint: {ckpt_path} ...")
-            model.load_from_checkpoint(checkpoint_path=ckpt_path)
+        else:
+            ckpt_path = None
+    else: 
+        ckpt_path = None
 
-    if conf["training"]["early_stop"]:
-        callbacks.append(EarlyStopping(monitor="loss/val_loss", mode="min", patience=30, verbose=False))
-
-    # Tensorboard Logger
-    logger = pl.loggers.TensorBoardLogger(save_dir=exp_dir, name="lightning_logs", default_hp_metric=False)
-
-    # Don't ask GPU if they are not available.
-    gpus = -1 if torch.cuda.is_available() else None
-    distributed_backend = "ddp" if torch.cuda.is_available() else None
-
+    # Run pytorch-lightning Trainer
     trainer = pl.Trainer(
         max_epochs=conf["training"]["epochs"],
         callbacks=callbacks, 
@@ -161,10 +177,11 @@ def main(conf):
         limit_train_batches=1.0, 
         gradient_clip_val=5.0, 
         precision=(16 if torch.cuda.is_available() else 32), 
-        num_sanity_val_steps=0, 
+        num_sanity_val_steps=0
     )
-    trainer.fit(system)
+    trainer.fit(system, ckpt_path=ckpt_path)
 
+    # Save top k best models info
     best_k = {k: v.item() for k, v in checkpoint.best_k_models.items()}
     with open(os.path.join(exp_dir, "best_k_models.json"), "w") as f:
         json.dump(best_k, f, indent=0)
