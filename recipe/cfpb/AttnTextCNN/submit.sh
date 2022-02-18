@@ -13,6 +13,6 @@ gpu='GeForceGTXTITANX'
 # gpu='GeForceRTX3060'
 
 S=$parentdir/$recipedir/run.sh
-L=$parentdir/$recipedir/logging.log
+L=$parentdir/$recipedir/$(date +"%Y_%m_%d_%I_%M_%p")-logging.log
 
 $submitjob -g$number_of_gpus -M$number_of_threads -m 15000 -o -l gputype=$gpu -eo $L $S
