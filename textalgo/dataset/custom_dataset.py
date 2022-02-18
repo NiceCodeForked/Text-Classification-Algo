@@ -3,12 +3,52 @@ import torch
 import typing
 import operator
 import itertools
-import collections
-from collections import Counter
+import datasets
+from tqdm.auto import tqdm
 from torch.utils.data import Dataset
+from collections import Counter
 from torchtext.vocab import Vocab
 from torchtext.vocab import build_vocab_from_iterator
 from textalgo.preprocess.tokenize import word_tokenize
+datasets.set_progress_bar_enabled(True)
+
+
+def load_text_classification_datasets(
+    train_texts: typing.Sequence, 
+    test_texts: typing.Sequence, 
+    train_labels: typing.Sequence, 
+    test_labels: typing.Sequence, 
+    tokenize: typing.Callable = None, 
+    batched: bool = True, 
+    num_proc: int = 4
+):
+    train_ds = datasets.Dataset.from_dict({"text": train_texts, 'label': train_labels})
+    test_ds = datasets.Dataset.from_dict({"text": test_texts, 'label': test_labels})
+
+    # Tokenise the train/test datasets
+    if tokenize is None:
+        tokenize = word_tokenize
+    train_ds = train_ds.map(
+        lambda x: {'tokens': tokenize(x['text'])}, 
+        batched=batched, num_proc=num_proc, tqdm_kwargs={'leave': False}
+    )
+    test_ds = test_ds.map(
+        lambda x: {'tokens': tokenize(x['text'])}, 
+        batched=batched, num_proc=num_proc, tqdm_kwargs={'leave': False}
+    )
+    # Build vocabulary from the train dataset
+    vocab = build_vocab_from_iterator(train_ds['tokens'], specials=["<pad>", "<unk>"])
+    vocab.set_default_index(vocab["<unk>"])
+    # Vectorise the train/test datasets
+    train_ds = train_ds.map(
+        lambda x: {'input_ids': [vocab[token] for token in x['tokens']]}, 
+        num_proc=num_proc, tqdm_kwargs={'leave': False}
+    )
+    test_ds = test_ds.map(
+        lambda x: {'input_ids': [vocab[token] for token in x['tokens']]}, 
+        num_proc=num_proc, tqdm_kwargs={'leave': False}
+    )
+    return train_ds, test_ds, vocab
 
 
 class TextDatasetMixin(object):
@@ -22,7 +62,7 @@ class TextDatasetMixin(object):
     def _build_vocab(self) -> Vocab:
 
         def yield_tokens(documents: typing.List[str]):
-            for doc in documents:
+            for doc in tqdm(documents, desc='Building vocabulary'):
                 yield self._tokenizer(doc)
 
         return build_vocab_from_iterator(
@@ -39,6 +79,14 @@ class TextDatasetMixin(object):
 
     def _vectorize(self, tokens: typing.List[str]) -> torch.Tensor:
         return torch.tensor([self._vocab[token] for token in tokens])
+
+    @property
+    def vocab(self):
+        return self._vocab
+
+    @vocab.setter
+    def vocab(self, vocab):
+        self._vocab = vocab
 
 
 class BaseTextDataset(Dataset, TextDatasetMixin):
@@ -73,7 +121,7 @@ class BaseTextDataset(Dataset, TextDatasetMixin):
         labels: typing.Sequence,
         transforms: typing.Iterable[typing.Callable] = None,
         tokenizer: typing.Callable = None,
-        vocab: Vocab = None,
+        vocab: Vocab = None
     ):
         self._texts = texts
         self._labels = labels
@@ -98,9 +146,9 @@ class BaseTextDataset(Dataset, TextDatasetMixin):
 
     def __getitem__(self, index: int):
         label = self._labels[index]
-        texts = self._texts[index]
-        texts = self._transform(texts)
-        tokens = self._tokenize(texts)
+        text = self._texts[index]
+        text = self._transform(text)
+        tokens = self._tokenize(text)
         vector = self._vectorize(tokens)
         return {
             'input_ids': vector, 
@@ -242,5 +290,3 @@ class TextTfidfDataset(Dataset):
     @staticmethod
     def trimmer(seq, size, filler=0):
         return seq[:size] + [filler]*(size-len(seq))
-
-
