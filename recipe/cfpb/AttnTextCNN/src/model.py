@@ -33,17 +33,19 @@ class AttnTextCNN(BaseModel):
         num_classes=2
     ):
         super(AttnTextCNN, self).__init__()
-        self.vocab_size = vocab_size
-        self.maxlen = maxlen
-        self.embed_dim = embed_dim
-        self.num_filters = num_filters
-        self.kernel_list = kernel_list
-        self.dropout = dropout
-        self.lin_neurons = lin_neurons
-        self.lin_blocks = lin_blocks
-        self.num_layers = num_layers
-        self.layer_norm_eps = layer_norm_eps
-        self.num_classes = num_classes
+        self.args = {k:v for k, v in locals().items() if k not in ['self', '__class__']}
+        # self.vocab_size = vocab_size
+        # self.maxlen = maxlen
+        # self.embed_dim = embed_dim
+        # self.num_heads = num_heads
+        # self.num_filters = num_filters
+        # self.kernel_list = kernel_list
+        # self.dropout = dropout
+        # self.lin_neurons = lin_neurons
+        # self.lin_blocks = lin_blocks
+        # self.num_layers = num_layers
+        # self.layer_norm_eps = layer_norm_eps
+        # self.num_classes = num_classes
         
         self.encoder = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
         self.spatial = SpatialDropout(dropout)
@@ -110,21 +112,7 @@ class AttnTextCNN(BaseModel):
 
     def get_model_args(self):
         """ Arguments needed to re-instantiate the model."""
-        model_args = {
-            "vocab_size": self.vocab_size, 
-            "maxlen": self.maxlen,
-            "embed_dim": self.embed_dim, 
-            "num_heads": self.num_heads, 
-            "num_filters": self.num_filters,
-            "kernel_list": self.kernel_list, 
-            "dropout": self.dropout, 
-            "lin_neurons": self.lin_neurons, 
-            "lin_blocks": self.lin_blocks, 
-            "num_layers": self.num_layers, 
-            "layer_norm_eps": self.layer_norm_eps, 
-            "num_classes": self.num_classes
-        }
-        return model_args
+        return self.args
 
 
 class TransformerEncoder(nn.Module):
