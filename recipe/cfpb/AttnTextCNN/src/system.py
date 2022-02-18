@@ -75,4 +75,4 @@ class TextCnnSystem(System):
             dataformats='HWC', 
             global_step=self.trainer.global_step
         )
-        plt.clf()
+        plt.close('all')
