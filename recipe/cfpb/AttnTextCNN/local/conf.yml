@@ -2,11 +2,15 @@
 model:
   max_length: 64
   embedding_dim: 300
+  num_heads: 10
   num_filters: 16
-  kernel_list: [3, 4, 5]
+  kernel_list: [5, 6, 7]
   dropout: 0.5
   lin_neurons: 128
   lin_blocks: 2
+  num_layers: 1
+  layer_norm_eps: 0.00001
+  num_classes: 5
 # Training config
 training:
   epochs: 100
@@ -21,3 +25,6 @@ optim:
   optimiser: adam
   lr: 0.001
   weight_decay: 0.
+# Data config
+data:
+  num_processing: 32
