@@ -28,7 +28,7 @@ class StaticPadding(object):
 
     def __call__(self, batch):
         labels = torch.tensor([b[self.y_col_name]for b in batch])
-        input_ids = [b[self.x_col_name] for b in batch]
+        input_ids = [torch.tensor(b[self.x_col_name]) for b in batch]
         input_ids = torch.stack([F.pad(i, (0, self.max_length-i.shape[0])) for i in input_ids])
         return {
             self.x_col_name: input_ids, 
