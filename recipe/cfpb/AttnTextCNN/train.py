@@ -6,34 +6,24 @@ import yaml
 import json
 import glob
 import argparse
-import torchvision
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import seaborn as sn
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import pytorch_lightning as pl
-from PIL import Image
-from io import BytesIO
 from collections import OrderedDict
-from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader
 from datasets import set_progress_bar_enabled
 from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
-from transformers import BertTokenizerFast
-
-from textalgo.nnet import Squeeze, Unsqueeze
-from textalgo.dataset import cfpb_dataset
-from textalgo.models import BaseModel, Classifier
-from textalgo.nnet import SpatialDropout
-from textalgo.nnet import SelfAttention, MultiheadAttention
-from textalgo.engine import System
+from textalgo.dataset import load_text_classification_datasets
+from textalgo.collate import StaticPadding
 from textalgo.engine import make_optimiser
-from textalgo.metrics import accuracy_score, f1_score
+
+from src.model import AttnTextCNN
+from src.system import TextCnnSystem
 
 
 parser = argparse.ArgumentParser()
@@ -42,206 +32,35 @@ set_progress_bar_enabled(True)
 pl.seed_everything(seed=914)
 
 
-class TextCnnSystem(System):
-
-    default_monitor: str = "loss/val_loss"
-
-    def common_step(self, batch, batch_nb, train):
-        inputs, targets = batch['input_ids'], batch['label']
-        est_targets = self(inputs)
-        loss = self.loss_func(est_targets, targets)
-        acc = accuracy_score(targets, est_targets)
-        f1 = f1_score(targets, est_targets)
-        performance = {
-            'acc': round(acc.item(), 4), 
-            'f1': round(f1.item(), 4)
-        }
-        if not train:
-            return est_targets, targets, loss, performance
-        return loss, performance
-
-    def training_step(self, batch, batch_nb):
-        loss, performance = self.common_step(batch, batch_nb, train=True)
-        self.log("performance/train_performance", performance, prog_bar=False, logger=True)
-        self.log("loss/train_loss", loss, logger=True)
-        return loss
-
-    def validation_step(self, batch, batch_nb):
-        est_targets, targets, loss, performance = self.common_step(batch, batch_nb, train=False)
-        self.log("performance/val_performance", performance, prog_bar=False)
-        self.log("loss/val_loss", loss, on_epoch=True, prog_bar=False)
-        return {
-            'loss': loss, 
-            'y_true': targets, 
-            'y_pred': est_targets.argmax(dim=1)
-        }
-
-    def validation_epoch_end(self, outputs):
-        y_pred = torch.cat([tmp['y_pred'] for tmp in outputs]).detach().cpu().numpy()
-        y_true = torch.cat([tmp['y_true'] for tmp in outputs]).detach().cpu().numpy()
-        
-        df_cm = pd.DataFrame(
-            confusion_matrix(y_true, y_pred),
-            index=np.arange(5),
-            columns=np.arange(5)
-        )
-
-        plt.figure()
-        sn.set(font_scale=1.2)
-        sn.heatmap(df_cm, annot=True, cmap="YlGnBu", annot_kws={"size": 16}, fmt='d')
-        buf = BytesIO()
-        plt.savefig(buf, format='jpeg')
-        buf.seek(0)
-        im = Image.open(buf)
-        im = torchvision.transforms.ToTensor()(im)
-        tb = self.trainer.logger.experiment
-        tb.add_image(
-            "val_confusion_matrix", 
-            im.permute(1, 2, 0), 
-            dataformats='HWC', 
-            global_step=self.trainer.global_step
-        )
-
-
-class AttnTextCNN(BaseModel):
-    
-    def __init__(
-        self, 
-        vocab_size, 
-        maxlen, 
-        emb_dim, 
-        num_filters=16, 
-        kernel_list=[3, 4, 5], 
-        dropout=0.1, 
-        lin_neurons=128, 
-        lin_blocks=2, 
-        num_classes=2
-    ):
-        super(AttnTextCNN, self).__init__()
-        self.vocab_size = vocab_size
-        self.maxlen = maxlen
-        self.emb_dim = emb_dim
-        self.num_filters = num_filters
-        self.kernel_list = kernel_list
-        self.dropout = dropout
-        self.lin_neurons = lin_neurons
-        self.lin_blocks = lin_blocks
-        self.num_classes = num_classes
-        
-        self.encoder = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
-        self.spatial = SpatialDropout(dropout)
-        self.attention = SelfAttention(emb_dim, emb_dim)
-        self.convs = nn.ModuleList(
-            [self.conv_block(maxlen, num_filters, w, emb_dim) for w in kernel_list]
-        )
-        self.drop = nn.Dropout(dropout)
-        self.classifier = Classifier(
-            input_size=len(kernel_list)*num_filters, 
-            lin_neurons=lin_neurons, 
-            lin_blocks=lin_blocks, 
-            out_neurons=num_classes
-        )
-    
-    def conv_block(self, maxlen, num_filters, filter_size, emb_dim):
-        """
-        Shape
-        -----
-        [batch, maxlen, emb_dim, 1]
-        [batch, n_filters, maxlen-filter_size+1, 1]
-        [batch, n_filters, maxlen-filter_size+1, 1]
-        [batch, n_filters, maxlen-filter_size+1]
-        [batch, n_filters, 1]
-        [batch, n_filters, 1]
-        """
-        return nn.Sequential(OrderedDict([
-            ('unsqueeze', Unsqueeze(dim=1)), 
-            ('conv', nn.Conv2d(1, num_filters, (filter_size, emb_dim))), 
-            ('relu', nn.ReLU(inplace=True)), 
-            ('squeeze', Squeeze(dim=3)), 
-            ('pool', nn.MaxPool1d(maxlen-filter_size+1, stride=1)), 
-            ('bn', nn.BatchNorm1d(num_filters))
-        ]))
-    
-    def forward(self, x):
-        """
-        Input: [batch, maxlen]
-        Output: [batch, n_classes]
-
-        Shape
-        -----
-        [batch, maxlen, emb_dim]
-        [batch, len(kernel_list)*n_filters, 1]
-        [batch, len(kernel_list)*n_filters]
-        [batch, len(kernel_list)*n_filters]
-        [batch, 1, len(kernel_list)*n_filters]
-        [batch, 1, n_classes]
-        [batch, n_classes]
-        """
-        x = self.encoder(x)
-        x = self.spatial(x)
-        x = self.attention(x)
-        x = torch.cat([layer(x) for layer in self.convs], dim=1)
-        x = x.squeeze(2)
-        x = self.drop(x)
-        x = x.unsqueeze(1)
-        x = self.classifier(x)
-        return x.squeeze(1)
-
-    def get_model_args(self):
-        """ Arguments needed to re-instantiate the model."""
-        model_args = {
-            "vocab_size": self.vocab_size, 
-            "maxlen": self.maxlen,
-            "emb_dim": self.emb_dim,
-            "num_filters": self.num_filters,
-            "kernel_list": self.kernel_list, 
-            "dropout": self.dropout, 
-            "lin_neurons": self.lin_neurons, 
-            "lin_blocks": self.lin_blocks, 
-            "num_classes": self.num_classes
-        }
-        return model_args
-
-
 def main(conf):
     # Load CFPB dataset
-    ds = cfpb_dataset.load(split='train')
-    dataset_dict = ds.train_test_split(test_size=0.2, seed=914)
-    train_ds = dataset_dict['train']
-    valid_ds = dataset_dict['test']
-    
-    # Load tokeniser
-    tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    train_ds = train_ds.map(
-		lambda x: tokenizer(
-			x['text'], 
-            max_length=conf['model']['max_length'], 
-            truncation=True, 
-            padding='max_length', 
-            add_special_tokens=False
-		)
-	)
-    valid_ds = valid_ds.map(
-		lambda x: tokenizer(
-			x['text'], 
-            max_length=conf['model']['max_length'], 
-            truncation=True, 
-            padding='max_length', 
-            add_special_tokens=False
-		)
-	)
-    train_ds.set_format(type='torch', columns=['input_ids', 'label'])
-    valid_ds.set_format(type='torch', columns=['input_ids', 'label'])
+    print('Loading dataset from the internet...')
+    url = "https://raw.githubusercontent.com/penguinwang96825/Text-Classification-Algo/master/data/cfpb-train.csv"
+    df = pd.read_csv(url)
+    X_train, X_valid, y_train, y_valid = train_test_split(
+        df['text'], df['label'], test_size=0.2, stratify=df['label'], random_state=914
+    )
+    train_ds, valid_ds, vocab = load_text_classification_datasets(
+        X_train, X_valid, y_train, y_valid, batched=True, num_proc=16
+    )
+
+    # Save vocab
+    sorted_by_freq_tuples = sorted(vocab.get_stoi().items(), key=lambda x: x[1], reverse=False)
+    ordered_dict = OrderedDict(sorted_by_freq_tuples)
+
+    with open('./vocab.txt', mode='wt', encoding='utf-8') as f:
+        f.write('\n'.join(ordered_dict.keys()))
 
     # Get dataloader
+    print('Loading dataloader...')
     train_dl = DataLoader(
         train_ds, 
         batch_size=conf['training']['batch_size'], 
         num_workers=conf['training']['num_workers'], 
         shuffle=True, 
         drop_last=True, 
-        pin_memory=True
+        pin_memory=True, 
+        collate_fn=StaticPadding('input_ids', 'label', conf['model']['max_length'])
     )
     valid_dl = DataLoader(
         valid_ds, 
@@ -249,7 +68,8 @@ def main(conf):
         num_workers=conf['training']['num_workers'], 
         shuffle=False, 
         drop_last=True, 
-        pin_memory=True
+        pin_memory=True, 
+        collate_fn=StaticPadding('input_ids', 'label', conf['model']['max_length'])
     )
     print(
         f'Train dataset: {len(train_ds)}\n'
@@ -258,15 +78,16 @@ def main(conf):
     
     # Define model and optimiser
     model = AttnTextCNN(
-        tokenizer.vocab_size, 
+        len(vocab), 
         conf['model']['max_length'], 
-        emb_dim=conf['model']['embedding_dim'], 
+        embed_dim=conf['model']['embedding_dim'], 
+        num_heads=conf['model']['num_heads'], 
         num_filters=conf['model']['num_filters'], 
         kernel_list=conf['model']['kernel_list'], 
         dropout=conf['model']['dropout'], 
         lin_neurons=conf['model']['lin_neurons'], 
         lin_blocks=conf['model']['lin_blocks'], 
-        num_classes=5
+        num_classes=conf['model']['num_classes']
     )
     optimiser = make_optimiser(model.parameters(), **conf["optim"])
 
@@ -283,7 +104,7 @@ def main(conf):
         yaml.safe_dump(conf, outfile)
 
     # Define Loss function.
-    targets = train_ds['label']
+    targets = torch.from_numpy(y_train.values)
     if conf['training']['loss_weight_rescaling']:
         occurrences = torch.unique(targets, sorted=True, return_counts=True)[1]
         # weight = 1. - (occurrences / len(targets))
@@ -317,6 +138,7 @@ def main(conf):
             ckpt_path = latest_file
             print(f"Loading checkpoint: {ckpt_path} ...")
             model.load_from_checkpoint(checkpoint_path=ckpt_path)
+
     if conf["training"]["early_stop"]:
         callbacks.append(EarlyStopping(monitor="loss/val_loss", mode="min", patience=30, verbose=False))
 
