@@ -4,15 +4,14 @@ sys.path.append(os.path.join(os.path.dirname(sys.path[0]), '..', '..'))
 
 import json
 import torch
+import datasets
 import argparse
+import pandas as pd
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
-from transformers import BertTokenizerFast
 from sklearn import metrics
 
-from textalgo.utils import run_shell
-from textalgo.dataset import cfpb_dataset
-from textalgo.models import TextCNN, LightWeightedTextCNN
+from textalgo.preprocess.tokenize import word_tokenize
 from textalgo.metrics import (
     accuracy_score, 
     f1_score, 
@@ -20,6 +19,8 @@ from textalgo.metrics import (
     precision_score, 
     recall_score
 )
+from textalgo.collate import StaticPadding
+from src.model import AttnTextCNN
 
 
 parser = argparse.ArgumentParser()
@@ -27,31 +28,33 @@ parser.add_argument("--exp_dir", default="exp/tmp", help="Experiment root")
 args = parser.parse_args()
 arg_dic = dict(vars(args))
 MODULE_DIR = os.path.join(os.path.dirname(sys.path[0]), '..', '..')
-RECIPE_DIR = os.path.join(MODULE_DIR, 'recipe/cfpb/TextCNN/')
+RECIPE_DIR = os.path.join(MODULE_DIR, 'recipe/cfpb/AttnTextCNN/')
 YAML_DIR = os.path.join(RECIPE_DIR, args.exp_dir, 'conf.yml')
 
 
 def main(conf):
     exp_dir = conf["exp_dir"]
-    model_path = os.path.join(conf["exp_dir"], "best_model.pth")
+    model_path = os.path.join(exp_dir, "best_model.pth")
     conf = conf['train_conf']
 
     # Load CFPB dataset
-    test_ds = cfpb_dataset.load(split='test')
-
-    # Load tokeniser
-    tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    url = "https://raw.githubusercontent.com/penguinwang96825/Text-Classification-Algo/master/data/"
+    test_url = url + "cfpb-test.csv"
+    df_test = pd.read_csv(url)
+    test_ds = datasets.Dataset.from_dict({"text": df_test['text'], 'label': df_test['label']})
     test_ds = test_ds.map(
-		lambda x: tokenizer(
-			x['text'], 
-            max_length=conf['model']['max_length'], 
-            truncation=True, 
-            padding='max_length', 
-            add_special_tokens=False
-		)
-	)
-    test_ds.set_format(type='torch', columns=['input_ids', 'label'])
+        lambda x: {'tokens': word_tokenize(x['text'])}, 
+        batched=True, num_proc=conf['data']['num_processing'], tqdm_kwargs={'leave': False}
+    )
+
+    # Load vocab
+    with open('./vocab.txt', mode='r', encoding='utf-8') as f:
+        stoi = {line.rstrip('\n'):idx for idx, line in enumerate(f)}
+
+    # Vectorise the tokens based on vocab
+    test_ds = test_ds.map(
+        lambda x: {'input_ids': [stoi.get(token, stoi['<unk>']) for token in x['tokens']]}
+    )
 
     # Get dataloader
     test_dl = DataLoader(
@@ -60,16 +63,14 @@ def main(conf):
         num_workers=conf['training']['num_workers'], 
         shuffle=False, 
         drop_last=False, 
-        pin_memory=True
+        pin_memory=True, 
+        collate_fn=StaticPadding('input_ids', 'label', conf['model']['max_length'])
     )
 
     # Define model and optimiser
-    if conf['model']['light']:
-        CNN = LightWeightedTextCNN
-    else:
-        CNN = TextCNN
-    model = CNN.from_pretrained(model_path)
+    model = AttnTextCNN.from_pretrained(model_path)
 
+    # Start evaluation loop
     with torch.no_grad():
         y_true, y_pred = [], []
         for batch_idx, batch in tqdm(enumerate(test_dl), total=len(test_dl)):
