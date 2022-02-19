@@ -1,5 +1,6 @@
 datasets
 matplotlib
+lemminflect
 pysbd
 pytorch-lightning
 ruamel.yaml
