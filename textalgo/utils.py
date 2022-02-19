@@ -154,4 +154,4 @@ class TestClass():
         super().__init__()
         self.args = {k:v for k, v in locals().items() if k not in ['self', '__class__']}
         for k, v in self.args.items():
-			setattr(self, k, v)
+	    setattr(self, k, v)
