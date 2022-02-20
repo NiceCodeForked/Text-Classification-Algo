@@ -18,8 +18,9 @@ PATTERN = r"""
     | \w+(?:-\w+)+          # words with internal hyphens
     | \w+(?:'[a-z])         # words with apostrophes
     | \.\.\.                # ellipsis
-    |(?:Mr|Mrs|Dr|Ms)\.     # honorifics
+    |(?:Mr|mr|Mrs|mrs|Dr|dr|Ms|ms)\.     # honorifics
     | \w+                   # normal words
+    | [,.!?\\-]             # specific punctuation
 """
 
 
