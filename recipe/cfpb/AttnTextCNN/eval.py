@@ -38,7 +38,7 @@ def main(conf):
     conf = conf['train_conf']
 
     # Load CFPB dataset
-    url = "https://raw.githubusercontent.com/penguinwang96825/Text-Classification-Algo/master/data/"
+    url = "https://github.com/penguinwang96825/Text-Classification-Algo/raw/master/data/"
     test_url = url + "cfpb-test.csv"
     df_test = pd.read_csv(url)
     test_ds = datasets.Dataset.from_dict({"text": df_test['text'], 'label': df_test['label']})
