@@ -28,7 +28,6 @@ from src.system import TextCnnSystem
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--exp_dir", default="exp/tmp", help="Full path to save best validation model")
-parser.add_argument("--version", default="none", help="Version to continue training")
 set_progress_bar_enabled(True)
 pl.seed_everything(seed=914)
 
@@ -36,7 +35,7 @@ pl.seed_everything(seed=914)
 def main(conf):
     # Load CFPB dataset
     print('Loading dataset from the internet...')
-    url = "https://raw.githubusercontent.com/penguinwang96825/Text-Classification-Algo/master/data/"
+    url = "https://github.com/penguinwang96825/Text-Classification-Algo/raw/master/data/"
     train_url = url + 'cfpb-train.csv'
     df = pd.read_csv(train_url)
     X_train, X_valid, y_train, y_valid = train_test_split(
@@ -141,12 +140,8 @@ def main(conf):
         callbacks.append(EarlyStopping(monitor="loss/val_loss", mode="min", patience=30, verbose=False))
 
     # Tensorboard Logger
-    if conf['version'] == 'none':
-        version = None
-    else:
-        version = int(conf["version"])
     logger = pl.loggers.TensorBoardLogger(
-        save_dir=exp_dir, name="lightning_logs", default_hp_metric=False, version=version
+        save_dir=exp_dir, name="lightning_logs", default_hp_metric=False
     )
 
     # Don't ask GPU if they are not available.
