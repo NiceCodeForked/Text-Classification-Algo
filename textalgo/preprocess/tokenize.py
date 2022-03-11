@@ -43,6 +43,11 @@ def word_tokenize(text):
         return [tokenise_(t) for t in text]
 
 
+def sentence_tokenize(text):
+    seg = pysbd.Segmenter(language="en", clean=False)
+    return seg.segment(text)
+
+
 def char_tokenize():
     pass
 
