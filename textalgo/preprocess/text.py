@@ -15,9 +15,9 @@ def remove_punct(text):
     return ''.join(text_)
 
 
-def remove_stopwords(text):
+def remove_stopwords(text, stopwords=STOPWORDS):
     """Custom function to remove the stopwords"""
-    return " ".join([word for word in str(text).split() if word not in STOPWORDS])
+    return " ".join([word for word in str(text).split() if word not in stopwords])
 
 
 def remove_emoji(string):
@@ -81,3 +81,21 @@ def remove_html(text):
     """Custom function to remove html tags"""
     html_pattern = re.compile('<.*?>')
     return html_pattern.sub(r'', text)
+
+
+def decontracted(text):
+    """Expanding English language contractions"""
+    # specific
+    text = re.sub(r"won(\'|\’)t", "will not", text)
+    text = re.sub(r"can(\'|\’)t", "can not", text)
+
+    # general
+    text = re.sub(r"n(\'|\’)t", " not", text)
+    text = re.sub(r"(\'|\’)re", " are", text)
+    text = re.sub(r"(\'|\’)s", " is", text)
+    text = re.sub(r"(\'|\’)d", " would", text)
+    text = re.sub(r"(\'|\’)ll", " will", text)
+    text = re.sub(r"(\'|\’)t", " not", text)
+    text = re.sub(r"(\'|\’)ve", " have", text)
+    text = re.sub(r"(\'|\’)m", " am", text)
+    return text
